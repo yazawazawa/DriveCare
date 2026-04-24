@@ -44,6 +44,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -110,6 +111,11 @@ enum class BottomTab(val label: String) {
     SETTINGS("設定")
 }
 
+enum class RecordMode {
+    FUEL,
+    MAINTENANCE
+}
+
 enum class SettingsScreen {
     TOP,
     VEHICLE_MANAGEMENT
@@ -135,6 +141,7 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
     val context = LocalContext.current
 
     var selectedTab by remember { mutableStateOf(BottomTab.ADD) }
+    var selectedRecordMode by remember { mutableStateOf(RecordMode.FUEL) }
     var settingsScreen by remember { mutableStateOf(SettingsScreen.TOP) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
 
@@ -170,19 +177,45 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
         .filter { it.vehicleId == uiState.selectedVehicleId }
         .sortedByDescending { it.timestamp }
 
-    val screenTitle = when (selectedTab) {
-        BottomTab.HISTORY -> "履歴"
-        BottomTab.REPORT -> "レポート"
-        BottomTab.ADD -> "給油記録追加"
-        BottomTab.SETTINGS -> when (settingsScreen) {
-            SettingsScreen.TOP -> "設定"
-            SettingsScreen.VEHICLE_MANAGEMENT -> "車両登録"
+    val screenTitle = when (selectedRecordMode) {
+        RecordMode.FUEL -> when (selectedTab) {
+            BottomTab.HISTORY -> "履歴"
+            BottomTab.REPORT -> "レポート"
+            BottomTab.ADD -> "給油記録追加"
+            BottomTab.SETTINGS -> when (settingsScreen) {
+                SettingsScreen.TOP -> "設定"
+                SettingsScreen.VEHICLE_MANAGEMENT -> "車両登録"
+            }
+        }
+        RecordMode.MAINTENANCE -> when (selectedTab) {
+            BottomTab.HISTORY -> "整備履歴"
+            BottomTab.REPORT -> "整備レポート"
+            BottomTab.ADD -> "整備記録追加"
+            BottomTab.SETTINGS -> "整備設定"
         }
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(screenTitle) })
+            TopAppBar(
+                title = { Text(screenTitle) },
+                actions = {
+                    Text(
+                        text = if (selectedRecordMode == RecordMode.MAINTENANCE) "整備" else "給油",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Switch(
+                        checked = selectedRecordMode == RecordMode.MAINTENANCE,
+                        onCheckedChange = { isMaintenance ->
+                            selectedRecordMode = if (isMaintenance) {
+                                RecordMode.MAINTENANCE
+                            } else {
+                                RecordMode.FUEL
+                            }
+                        }
+                    )
+                }
+            )
         },
         bottomBar = {
             NavigationBar(modifier = Modifier.navigationBarsPadding()) {
@@ -225,7 +258,15 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
             }
         }
     ) { innerPadding ->
-        when (selectedTab) {
+        if (selectedRecordMode == RecordMode.MAINTENANCE) {
+            MaintenanceModeScreen(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                selectedTab = selectedTab
+            )
+        } else {
+            when (selectedTab) {
             BottomTab.HISTORY -> {
                 HistoryScreen(
                     modifier = Modifier
@@ -385,6 +426,31 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                 }
             }
         }
+        }
+    }
+}
+
+@Composable
+fun MaintenanceModeScreen(
+    modifier: Modifier = Modifier,
+    selectedTab: BottomTab
+) {
+    val message = when (selectedTab) {
+        BottomTab.HISTORY -> "整備履歴を表示する画面です。"
+        BottomTab.REPORT -> "整備レポートを表示する画面です。"
+        BottomTab.ADD -> "整備記録を入力する画面です。"
+        BottomTab.SETTINGS -> "整備関連の設定画面です。"
+    }
+
+    Box(
+        modifier = modifier.padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "$message\n(フッターのタブ構成はそのままです)",
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge
+        )
     }
 }
 
