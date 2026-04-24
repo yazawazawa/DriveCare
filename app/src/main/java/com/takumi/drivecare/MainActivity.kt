@@ -163,6 +163,17 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
     var isFullTank by remember { mutableStateOf(true) }
     var selectedGraphType by remember { mutableStateOf(ReportGraphType.FUEL_PRICE) }
 
+    fun updateTotalPriceFrom(litersValue: String, unitPriceValue: String) {
+        val liters = litersValue.toDoubleOrNull()
+        val unitPrice = unitPriceValue.toDoubleOrNull()
+
+        totalPriceText = if (liters != null && unitPrice != null) {
+            (liters * unitPrice).roundToInt().toString()
+        } else {
+            ""
+        }
+    }
+
     fun recalcFromUnitPrice() {
         val liters = litersText.toDoubleOrNull()
         val unitPrice = unitPriceText.toDoubleOrNull()
@@ -293,6 +304,7 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                         selectedVehicleId = uiState.selectedVehicleId,
                         onVehicleSelected = { viewModel.selectVehicle(it) },
                         record = selectedMaintenanceRecord
+
                     )
                 } else {
                     ReportScreen(
@@ -320,6 +332,7 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                         vehicles = uiState.vehicles,
                         selectedVehicleId = uiState.selectedVehicleId,
                         onVehicleSelected = { viewModel.selectVehicle(it) },
+
                         record = selectedMaintenanceRecord,
                         onSave = { vehicleId, carWash, engineOil, element, wiper, tire, airCleanerDate, serviceType ->
                             viewModel.upsertMaintenanceRecord(
@@ -465,6 +478,24 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                 }
             }
         }
+    }
+}
+
+
+@Composable
+fun MaintenanceModeScreen(
+    modifier: Modifier = Modifier,
+    title: String
+) {
+    Box(
+        modifier = modifier.padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "$title はこれから追加します。\nフッターのタブ構成（履歴 / レポート / 入力 / 設定）はそのままです。",
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge
+        )
     }
 }
 
@@ -2271,7 +2302,7 @@ fun FuelRecordEditDialog(
                 OutlinedTextField(
                     value = totalPriceText,
                     onValueChange = { totalPriceText = sanitizeIntInput(it) },
-                    label = { Text("支払金額 (円)") },
+                    label = { Text("支払金額 (yen)") },
                     singleLine = true
                 )
 
