@@ -25,6 +25,7 @@ data class BackupFuelRecord(
 
 @Serializable
 data class BackupMaintenanceRecord(
+
     val id: Int,
     val vehicleId: Int,
     val timestamp: Long,
@@ -36,6 +37,7 @@ data class BackupMaintenanceRecord(
     val tireDone: Boolean,
     val airCleanerCleaningDone: Boolean,
     val airCleanerReplacementDone: Boolean
+
 )
 
 @Serializable

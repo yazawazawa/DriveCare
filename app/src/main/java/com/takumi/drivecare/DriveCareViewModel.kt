@@ -166,6 +166,7 @@ class DriveCareViewModel(
         }
     }
 
+
     fun addMaintenanceRecord(
         vehicleId: Int,
         timestamp: Long,
@@ -191,6 +192,7 @@ class DriveCareViewModel(
                     tireDone = tireDone,
                     airCleanerCleaningDone = airCleanerCleaningDone,
                     airCleanerReplacementDone = airCleanerReplacementDone
+
                 )
             )
             reload()
@@ -241,6 +243,7 @@ class DriveCareViewModel(
                     tireDone = it.tireDone,
                     airCleanerCleaningDone = it.airCleanerCleaningDone,
                     airCleanerReplacementDone = it.airCleanerReplacementDone
+
                 )
             }
 

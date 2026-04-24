@@ -42,6 +42,7 @@ object BackupUtils {
             },
             maintenanceRecords = maintenanceRecords.map {
                 BackupMaintenanceRecord(
+
                     id = it.id,
                     vehicleId = it.vehicleId,
                     timestamp = it.timestamp,
@@ -53,6 +54,7 @@ object BackupUtils {
                     tireDone = it.tireDone,
                     airCleanerCleaningDone = it.airCleanerCleaningDone,
                     airCleanerReplacementDone = it.airCleanerReplacementDone
+
                 )
             },
         )

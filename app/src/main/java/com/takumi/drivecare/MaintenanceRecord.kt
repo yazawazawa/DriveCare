@@ -16,4 +16,5 @@ data class MaintenanceRecord(
     val tireDone: Boolean,
     val airCleanerCleaningDone: Boolean,
     val airCleanerReplacementDone: Boolean
+
 )
