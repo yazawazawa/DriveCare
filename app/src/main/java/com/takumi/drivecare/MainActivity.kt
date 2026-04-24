@@ -177,21 +177,13 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
         .filter { it.vehicleId == uiState.selectedVehicleId }
         .sortedByDescending { it.timestamp }
 
-    val screenTitle = when (selectedRecordMode) {
-        RecordMode.FUEL -> when (selectedTab) {
-            BottomTab.HISTORY -> "履歴"
-            BottomTab.REPORT -> "レポート"
-            BottomTab.ADD -> "給油記録追加"
-            BottomTab.SETTINGS -> when (settingsScreen) {
-                SettingsScreen.TOP -> "設定"
-                SettingsScreen.VEHICLE_MANAGEMENT -> "車両登録"
-            }
-        }
-        RecordMode.MAINTENANCE -> when (selectedTab) {
-            BottomTab.HISTORY -> "整備履歴"
-            BottomTab.REPORT -> "整備レポート"
-            BottomTab.ADD -> "整備記録追加"
-            BottomTab.SETTINGS -> "整備設定"
+    val screenTitle = when (selectedTab) {
+        BottomTab.HISTORY -> if (selectedRecordMode == RecordMode.MAINTENANCE) "整備履歴" else "履歴"
+        BottomTab.REPORT -> if (selectedRecordMode == RecordMode.MAINTENANCE) "整備レポート" else "レポート"
+        BottomTab.ADD -> if (selectedRecordMode == RecordMode.MAINTENANCE) "整備記録追加" else "給油記録追加"
+        BottomTab.SETTINGS -> when (settingsScreen) {
+            SettingsScreen.TOP -> "設定"
+            SettingsScreen.VEHICLE_MANAGEMENT -> "車両登録"
         }
     }
 
@@ -200,10 +192,7 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
             TopAppBar(
                 title = { Text(screenTitle) },
                 actions = {
-                    Text(
-                        text = if (selectedRecordMode == RecordMode.MAINTENANCE) "整備" else "給油",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    Text(text = "給油", style = MaterialTheme.typography.bodySmall)
                     Switch(
                         checked = selectedRecordMode == RecordMode.MAINTENANCE,
                         onCheckedChange = { isMaintenance ->
@@ -214,6 +203,7 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                             }
                         }
                     )
+                    Text(text = "整備", style = MaterialTheme.typography.bodySmall)
                 }
             )
         },
@@ -258,104 +248,123 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
             }
         }
     ) { innerPadding ->
-        if (selectedRecordMode == RecordMode.MAINTENANCE) {
-            MaintenanceModeScreen(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding),
-                selectedTab = selectedTab
-            )
-        } else {
-            when (selectedTab) {
+        when (selectedTab) {
             BottomTab.HISTORY -> {
-                HistoryScreen(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    vehicles = uiState.vehicles,
-                    selectedVehicleId = uiState.selectedVehicleId,
-                    onVehicleSelected = { viewModel.selectVehicle(it) },
-                    records = selectedVehicleRecords,
-                    onUpdateFuelRecord = { viewModel.updateFuelRecord(it) },
-                    onDeleteFuelRecord = { viewModel.deleteFuelRecord(it) }
-                )
+                if (selectedRecordMode == RecordMode.MAINTENANCE) {
+                    MaintenanceModeScreen(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        title = "整備履歴"
+                    )
+                } else {
+                    HistoryScreen(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        vehicles = uiState.vehicles,
+                        selectedVehicleId = uiState.selectedVehicleId,
+                        onVehicleSelected = { viewModel.selectVehicle(it) },
+                        records = selectedVehicleRecords,
+                        onUpdateFuelRecord = { viewModel.updateFuelRecord(it) },
+                        onDeleteFuelRecord = { viewModel.deleteFuelRecord(it) }
+                    )
+                }
             }
 
             BottomTab.REPORT -> {
-                ReportScreen(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    vehicles = uiState.vehicles,
-                    selectedVehicleId = uiState.selectedVehicleId,
-                    onVehicleSelected = { viewModel.selectVehicle(it) },
-                    fuelRecords = uiState.fuelRecords,
-                    selectedRange = uiState.reportRange,
-                    onRangeSelected = { viewModel.setReportRange(it) },
-                    selectedGraphType = selectedGraphType,
-                    onGraphTypeSelected = { selectedGraphType = it }
-                )
+                if (selectedRecordMode == RecordMode.MAINTENANCE) {
+                    MaintenanceModeScreen(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        title = "整備レポート"
+                    )
+                } else {
+                    ReportScreen(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        vehicles = uiState.vehicles,
+                        selectedVehicleId = uiState.selectedVehicleId,
+                        onVehicleSelected = { viewModel.selectVehicle(it) },
+                        fuelRecords = uiState.fuelRecords,
+                        selectedRange = uiState.reportRange,
+                        onRangeSelected = { viewModel.setReportRange(it) },
+                        selectedGraphType = selectedGraphType,
+                        onGraphTypeSelected = { selectedGraphType = it }
+                    )
+                }
             }
 
             BottomTab.ADD -> {
-                AddScreen(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
-                    vehicles = uiState.vehicles,
-                    selectedVehicleId = uiState.selectedVehicleId,
-                    onVehicleSelected = { viewModel.selectVehicle(it) },
-                    previousRecord = selectedVehicleRecords.firstOrNull(),
-                    odometerText = odometerText,
-                    onOdometerChange = { odometerText = it },
-                    litersText = litersText,
-                    onLitersChange = {
-                        litersText = it
-                        if (unitPriceText.isNotBlank()) recalcFromUnitPrice()
-                        else if (totalPriceText.isNotBlank()) recalcFromTotalPrice()
-                    },
-                    unitPriceText = unitPriceText,
-                    onUnitPriceChange = {
-                        unitPriceText = it
-                        recalcFromUnitPrice()
-                    },
-                    totalPriceText = totalPriceText,
-                    onTotalPriceChange = {
-                        totalPriceText = it
-                        recalcFromTotalPrice()
-                    },
-                    isFullTank = isFullTank,
-                    onFullTankChange = { isFullTank = it },
-                    onSaveFuelRecord = {
-                        val vehicleId = uiState.selectedVehicleId
-                        val odometer = odometerText.toDoubleOrNull()
-                        val liters = litersText.toDoubleOrNull()
-                        val unitPrice = unitPriceText.toDoubleOrNull()
-                        val totalPrice = totalPriceText.toDoubleOrNull()?.roundToInt()
+                if (selectedRecordMode == RecordMode.MAINTENANCE) {
+                    MaintenanceModeScreen(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        title = "整備記録追加"
+                    )
+                } else {
+                    AddScreen(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        vehicles = uiState.vehicles,
+                        selectedVehicleId = uiState.selectedVehicleId,
+                        onVehicleSelected = { viewModel.selectVehicle(it) },
+                        previousRecord = selectedVehicleRecords.firstOrNull(),
+                        odometerText = odometerText,
+                        onOdometerChange = { odometerText = it },
+                        litersText = litersText,
+                        onLitersChange = {
+                            litersText = it
+                            if (unitPriceText.isNotBlank()) recalcFromUnitPrice()
+                            else if (totalPriceText.isNotBlank()) recalcFromTotalPrice()
+                        },
+                        unitPriceText = unitPriceText,
+                        onUnitPriceChange = {
+                            unitPriceText = it
+                            recalcFromUnitPrice()
+                        },
+                        totalPriceText = totalPriceText,
+                        onTotalPriceChange = {
+                            totalPriceText = it
+                            recalcFromTotalPrice()
+                        },
+                        isFullTank = isFullTank,
+                        onFullTankChange = { isFullTank = it },
+                        onSaveFuelRecord = {
+                            val vehicleId = uiState.selectedVehicleId
+                            val odometer = odometerText.toDoubleOrNull()
+                            val liters = litersText.toDoubleOrNull()
+                            val unitPrice = unitPriceText.toDoubleOrNull()
+                            val totalPrice = totalPriceText.toDoubleOrNull()?.roundToInt()
 
-                        if (vehicleId != null &&
-                            odometer != null &&
-                            liters != null &&
-                            unitPrice != null &&
-                            totalPrice != null
-                        ) {
-                            viewModel.addFuelRecord(
-                                vehicleId = vehicleId,
-                                odometer = odometer,
-                                liters = liters,
-                                unitPrice = unitPrice,
-                                totalPrice = totalPrice,
-                                isFullTank = isFullTank
-                            )
-                            odometerText = ""
-                            litersText = ""
-                            unitPriceText = ""
-                            totalPriceText = ""
-                            isFullTank = true
-                            selectedTab = BottomTab.HISTORY
+                            if (vehicleId != null &&
+                                odometer != null &&
+                                liters != null &&
+                                unitPrice != null &&
+                                totalPrice != null
+                            ) {
+                                viewModel.addFuelRecord(
+                                    vehicleId = vehicleId,
+                                    odometer = odometer,
+                                    liters = liters,
+                                    unitPrice = unitPrice,
+                                    totalPrice = totalPrice,
+                                    isFullTank = isFullTank
+                                )
+                                odometerText = ""
+                                litersText = ""
+                                unitPriceText = ""
+                                totalPriceText = ""
+                                isFullTank = true
+                                selectedTab = BottomTab.HISTORY
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
 
             BottomTab.SETTINGS -> {
@@ -426,28 +435,20 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                 }
             }
         }
-        }
     }
 }
 
 @Composable
 fun MaintenanceModeScreen(
     modifier: Modifier = Modifier,
-    selectedTab: BottomTab
+    title: String
 ) {
-    val message = when (selectedTab) {
-        BottomTab.HISTORY -> "整備履歴を表示する画面です。"
-        BottomTab.REPORT -> "整備レポートを表示する画面です。"
-        BottomTab.ADD -> "整備記録を入力する画面です。"
-        BottomTab.SETTINGS -> "整備関連の設定画面です。"
-    }
-
     Box(
         modifier = modifier.padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "$message\n(フッターのタブ構成はそのままです)",
+            text = "$title はこれから追加します。\nフッターのタブ構成（履歴 / レポート / 入力 / 設定）はそのままです。",
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.bodyLarge
         )
