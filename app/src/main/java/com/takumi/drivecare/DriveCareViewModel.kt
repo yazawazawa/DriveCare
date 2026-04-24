@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 data class DriveCareUiState(
     val vehicles: List<Vehicle> = emptyList(),
     val fuelRecords: List<FuelRecord> = emptyList(),
+    val maintenanceRecords: List<MaintenanceRecord> = emptyList(),
     val selectedVehicleId: Int? = null,
     val lastUsedVehicleId: Int? = null,
     val reportRange: ReportRange = ReportRange.TOTAL
@@ -33,6 +34,7 @@ class DriveCareViewModel(
     suspend fun reload() {
         val vehicles = repository.getAllVehicles()
         val records = repository.getAllFuelRecords()
+        val maintenanceRecords = repository.getAllMaintenanceRecords()
 
         val selectedVehicleId =
             _uiState.value.selectedVehicleId
@@ -42,6 +44,7 @@ class DriveCareViewModel(
         _uiState.value = _uiState.value.copy(
             vehicles = vehicles,
             fuelRecords = records,
+            maintenanceRecords = maintenanceRecords,
             selectedVehicleId = selectedVehicleId
         )
     }
@@ -72,10 +75,12 @@ class DriveCareViewModel(
 
             val vehicles = repository.getAllVehicles()
             val records = repository.getAllFuelRecords()
+            val maintenanceRecords = repository.getAllMaintenanceRecords()
 
             _uiState.value = _uiState.value.copy(
                 vehicles = vehicles,
                 fuelRecords = records,
+                maintenanceRecords = maintenanceRecords,
                 selectedVehicleId = newId,
                 lastUsedVehicleId = _uiState.value.lastUsedVehicleId ?: newId
             )
@@ -97,6 +102,7 @@ class DriveCareViewModel(
             _uiState.value = _uiState.value.copy(
                 vehicles = vehicles,
                 fuelRecords = repository.getAllFuelRecords(),
+                maintenanceRecords = repository.getAllMaintenanceRecords(),
                 selectedVehicleId = nextSelected,
                 lastUsedVehicleId = nextSelected
             )
@@ -153,9 +159,37 @@ class DriveCareViewModel(
             val file = BackupUtils.exportToLocalFile(
                 context = context,
                 vehicles = _uiState.value.vehicles,
-                fuelRecords = _uiState.value.fuelRecords
+                fuelRecords = _uiState.value.fuelRecords,
+                maintenanceRecords = _uiState.value.maintenanceRecords
             )
             onDone(file.absolutePath)
+        }
+    }
+
+    fun upsertMaintenanceRecord(
+        vehicleId: Int,
+        carWashDate: String?,
+        engineOilChangeDate: String?,
+        oilElementChangeDate: String?,
+        wiperChangeDate: String?,
+        tireChangeDate: String?,
+        airCleanerDate: String?,
+        airCleanerService: String?
+    ) {
+        viewModelScope.launch {
+            repository.upsertMaintenanceRecord(
+                MaintenanceRecord(
+                    vehicleId = vehicleId,
+                    carWashDate = carWashDate?.takeIf { it.isNotBlank() },
+                    engineOilChangeDate = engineOilChangeDate?.takeIf { it.isNotBlank() },
+                    oilElementChangeDate = oilElementChangeDate?.takeIf { it.isNotBlank() },
+                    wiperChangeDate = wiperChangeDate?.takeIf { it.isNotBlank() },
+                    tireChangeDate = tireChangeDate?.takeIf { it.isNotBlank() },
+                    airCleanerDate = airCleanerDate?.takeIf { it.isNotBlank() },
+                    airCleanerService = airCleanerService?.takeIf { it.isNotBlank() }
+                )
+            )
+            reload()
         }
     }
 
@@ -190,7 +224,20 @@ class DriveCareViewModel(
                 )
             }
 
-            repository.replaceAllData(vehicles, fuelRecords)
+            val maintenanceRecords = backup.maintenanceRecords.map {
+                MaintenanceRecord(
+                    vehicleId = it.vehicleId,
+                    carWashDate = it.carWashDate,
+                    engineOilChangeDate = it.engineOilChangeDate,
+                    oilElementChangeDate = it.oilElementChangeDate,
+                    wiperChangeDate = it.wiperChangeDate,
+                    tireChangeDate = it.tireChangeDate,
+                    airCleanerDate = it.airCleanerDate,
+                    airCleanerService = it.airCleanerService
+                )
+            }
+
+            repository.replaceAllData(vehicles, fuelRecords, maintenanceRecords)
             reload()
             onDone(true)
         }

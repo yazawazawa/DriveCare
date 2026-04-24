@@ -15,7 +15,8 @@ object BackupUtils {
     fun exportToLocalFile(
         context: Context,
         vehicles: List<Vehicle>,
-        fuelRecords: List<FuelRecord>
+        fuelRecords: List<FuelRecord>,
+        maintenanceRecords: List<MaintenanceRecord>
     ): File {
         val backup = BackupData(
             vehicles = vehicles.map {
@@ -38,7 +39,19 @@ object BackupUtils {
                     isFullTank = it.isFullTank,
                     timestamp = it.timestamp
                 )
-            }
+            },
+            maintenanceRecords = maintenanceRecords.map {
+                BackupMaintenanceRecord(
+                    vehicleId = it.vehicleId,
+                    carWashDate = it.carWashDate,
+                    engineOilChangeDate = it.engineOilChangeDate,
+                    oilElementChangeDate = it.oilElementChangeDate,
+                    wiperChangeDate = it.wiperChangeDate,
+                    tireChangeDate = it.tireChangeDate,
+                    airCleanerDate = it.airCleanerDate,
+                    airCleanerService = it.airCleanerService
+                )
+            },
         )
 
         val text = json.encodeToString(backup)

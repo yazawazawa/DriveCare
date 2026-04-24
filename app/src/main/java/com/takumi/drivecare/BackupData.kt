@@ -24,7 +24,20 @@ data class BackupFuelRecord(
 )
 
 @Serializable
+data class BackupMaintenanceRecord(
+    val vehicleId: Int,
+    val carWashDate: String? = null,
+    val engineOilChangeDate: String? = null,
+    val oilElementChangeDate: String? = null,
+    val wiperChangeDate: String? = null,
+    val tireChangeDate: String? = null,
+    val airCleanerDate: String? = null,
+    val airCleanerService: String? = null
+)
+
+@Serializable
 data class BackupData(
     val vehicles: List<BackupVehicle>,
-    val fuelRecords: List<BackupFuelRecord>
+    val fuelRecords: List<BackupFuelRecord>,
+    val maintenanceRecords: List<BackupMaintenanceRecord> = emptyList()
 )

@@ -46,8 +46,26 @@ interface DriveCareDao {
     @Query("DELETE FROM fuel_records WHERE vehicleId = :vehicleId")
     suspend fun deleteFuelRecordsByVehicleId(vehicleId: Int)
 
+    @Query("SELECT * FROM maintenance_records ORDER BY vehicleId ASC")
+    suspend fun getAllMaintenanceRecords(): List<MaintenanceRecord>
+
+    @Query("SELECT * FROM maintenance_records WHERE vehicleId = :vehicleId LIMIT 1")
+    suspend fun getMaintenanceRecordByVehicle(vehicleId: Int): MaintenanceRecord?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertMaintenanceRecord(record: MaintenanceRecord)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertMaintenanceRecords(records: List<MaintenanceRecord>)
+
+    @Query("DELETE FROM maintenance_records WHERE vehicleId = :vehicleId")
+    suspend fun deleteMaintenanceRecordByVehicleId(vehicleId: Int)
+
     @Query("DELETE FROM fuel_records")
     suspend fun deleteAllFuelRecords()
+
+    @Query("DELETE FROM maintenance_records")
+    suspend fun deleteAllMaintenanceRecords()
 
     @Query("DELETE FROM vehicles")
     suspend fun deleteAllVehicles()
