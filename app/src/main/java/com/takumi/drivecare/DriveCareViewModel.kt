@@ -166,27 +166,33 @@ class DriveCareViewModel(
         }
     }
 
-    fun upsertMaintenanceRecord(
+
+    fun addMaintenanceRecord(
         vehicleId: Int,
-        carWashDate: String?,
-        engineOilChangeDate: String?,
-        oilElementChangeDate: String?,
-        wiperChangeDate: String?,
-        tireChangeDate: String?,
-        airCleanerDate: String?,
-        airCleanerService: String?
+        timestamp: Long,
+        odometer: Double,
+        carWashDone: Boolean,
+        engineOilDone: Boolean,
+        oilElementDone: Boolean,
+        wiperDone: Boolean,
+        tireDone: Boolean,
+        airCleanerCleaningDone: Boolean,
+        airCleanerReplacementDone: Boolean
     ) {
         viewModelScope.launch {
-            repository.upsertMaintenanceRecord(
+            repository.insertMaintenanceRecord(
                 MaintenanceRecord(
                     vehicleId = vehicleId,
-                    carWashDate = carWashDate?.takeIf { it.isNotBlank() },
-                    engineOilChangeDate = engineOilChangeDate?.takeIf { it.isNotBlank() },
-                    oilElementChangeDate = oilElementChangeDate?.takeIf { it.isNotBlank() },
-                    wiperChangeDate = wiperChangeDate?.takeIf { it.isNotBlank() },
-                    tireChangeDate = tireChangeDate?.takeIf { it.isNotBlank() },
-                    airCleanerDate = airCleanerDate?.takeIf { it.isNotBlank() },
-                    airCleanerService = airCleanerService?.takeIf { it.isNotBlank() }
+                    timestamp = timestamp,
+                    odometer = odometer,
+                    carWashDone = carWashDone,
+                    engineOilDone = engineOilDone,
+                    oilElementDone = oilElementDone,
+                    wiperDone = wiperDone,
+                    tireDone = tireDone,
+                    airCleanerCleaningDone = airCleanerCleaningDone,
+                    airCleanerReplacementDone = airCleanerReplacementDone
+
                 )
             )
             reload()
@@ -226,14 +232,18 @@ class DriveCareViewModel(
 
             val maintenanceRecords = backup.maintenanceRecords.map {
                 MaintenanceRecord(
+                    id = it.id,
                     vehicleId = it.vehicleId,
-                    carWashDate = it.carWashDate,
-                    engineOilChangeDate = it.engineOilChangeDate,
-                    oilElementChangeDate = it.oilElementChangeDate,
-                    wiperChangeDate = it.wiperChangeDate,
-                    tireChangeDate = it.tireChangeDate,
-                    airCleanerDate = it.airCleanerDate,
-                    airCleanerService = it.airCleanerService
+                    timestamp = it.timestamp,
+                    odometer = it.odometer,
+                    carWashDone = it.carWashDone,
+                    engineOilDone = it.engineOilDone,
+                    oilElementDone = it.oilElementDone,
+                    wiperDone = it.wiperDone,
+                    tireDone = it.tireDone,
+                    airCleanerCleaningDone = it.airCleanerCleaningDone,
+                    airCleanerReplacementDone = it.airCleanerReplacementDone
+
                 )
             }
 

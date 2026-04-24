@@ -42,14 +42,19 @@ object BackupUtils {
             },
             maintenanceRecords = maintenanceRecords.map {
                 BackupMaintenanceRecord(
+
+                    id = it.id,
                     vehicleId = it.vehicleId,
-                    carWashDate = it.carWashDate,
-                    engineOilChangeDate = it.engineOilChangeDate,
-                    oilElementChangeDate = it.oilElementChangeDate,
-                    wiperChangeDate = it.wiperChangeDate,
-                    tireChangeDate = it.tireChangeDate,
-                    airCleanerDate = it.airCleanerDate,
-                    airCleanerService = it.airCleanerService
+                    timestamp = it.timestamp,
+                    odometer = it.odometer,
+                    carWashDone = it.carWashDone,
+                    engineOilDone = it.engineOilDone,
+                    oilElementDone = it.oilElementDone,
+                    wiperDone = it.wiperDone,
+                    tireDone = it.tireDone,
+                    airCleanerCleaningDone = it.airCleanerCleaningDone,
+                    airCleanerReplacementDone = it.airCleanerReplacementDone
+
                 )
             },
         )

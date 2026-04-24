@@ -8,8 +8,10 @@ class DriveCareRepository(
     suspend fun getAllMaintenanceRecords(): List<MaintenanceRecord> = dao.getAllMaintenanceRecords()
     suspend fun getFuelRecordsByVehicle(vehicleId: Int): List<FuelRecord> =
         dao.getFuelRecordsByVehicle(vehicleId)
-    suspend fun getMaintenanceRecordByVehicle(vehicleId: Int): MaintenanceRecord? =
-        dao.getMaintenanceRecordByVehicle(vehicleId)
+
+    suspend fun getMaintenanceRecordsByVehicle(vehicleId: Int): List<MaintenanceRecord> =
+        dao.getMaintenanceRecordsByVehicle(vehicleId)
+
 
     suspend fun insertVehicle(vehicle: Vehicle): Long = dao.insertVehicle(vehicle)
     suspend fun insertFuelRecord(record: FuelRecord): Long = dao.insertFuelRecord(record)
@@ -24,7 +26,8 @@ class DriveCareRepository(
 
     suspend fun updateFuelRecord(record: FuelRecord) = dao.updateFuelRecord(record)
     suspend fun deleteFuelRecord(record: FuelRecord) = dao.deleteFuelRecord(record)
-    suspend fun upsertMaintenanceRecord(record: MaintenanceRecord) = dao.upsertMaintenanceRecord(record)
+    suspend fun insertMaintenanceRecord(record: MaintenanceRecord): Long = dao.insertMaintenanceRecord(record)
+
 
     suspend fun countVehicles(): Int = dao.countVehicles()
     suspend fun countFuelRecords(): Int = dao.countFuelRecords()
@@ -39,6 +42,7 @@ class DriveCareRepository(
         dao.deleteAllVehicles()
         dao.insertVehicles(vehicles)
         dao.insertFuelRecords(fuelRecords)
-        dao.upsertMaintenanceRecords(maintenanceRecords)
+        dao.insertMaintenanceRecords(maintenanceRecords)
+
     }
 }

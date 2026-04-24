@@ -25,14 +25,19 @@ data class BackupFuelRecord(
 
 @Serializable
 data class BackupMaintenanceRecord(
+
+    val id: Int,
     val vehicleId: Int,
-    val carWashDate: String? = null,
-    val engineOilChangeDate: String? = null,
-    val oilElementChangeDate: String? = null,
-    val wiperChangeDate: String? = null,
-    val tireChangeDate: String? = null,
-    val airCleanerDate: String? = null,
-    val airCleanerService: String? = null
+    val timestamp: Long,
+    val odometer: Double,
+    val carWashDone: Boolean,
+    val engineOilDone: Boolean,
+    val oilElementDone: Boolean,
+    val wiperDone: Boolean,
+    val tireDone: Boolean,
+    val airCleanerCleaningDone: Boolean,
+    val airCleanerReplacementDone: Boolean
+
 )
 
 @Serializable

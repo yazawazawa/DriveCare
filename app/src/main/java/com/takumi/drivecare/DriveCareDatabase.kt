@@ -19,7 +19,9 @@ class FuelTypeConverter {
 
 @Database(
     entities = [Vehicle::class, FuelRecord::class, MaintenanceRecord::class],
-    version = 2,
+
+    version = 3,
+
     exportSchema = false
 )
 @TypeConverters(FuelTypeConverter::class)
