@@ -150,19 +150,25 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
     var isFullTank by remember { mutableStateOf(true) }
     var selectedGraphType by remember { mutableStateOf(ReportGraphType.FUEL_PRICE) }
 
-    fun recalcFromUnitPrice() {
-        val liters = litersText.toDoubleOrNull()
-        val unitPrice = unitPriceText.toDoubleOrNull()
-        if (liters != null && unitPrice != null) {
-            totalPriceText = (liters * unitPrice).roundToInt().toString()
+    fun updateTotalPriceFrom(litersValue: String, unitPriceValue: String) {
+        val liters = litersValue.toDoubleOrNull()
+        val unitPrice = unitPriceValue.toDoubleOrNull()
+
+        totalPriceText = if (liters != null && unitPrice != null) {
+            (liters * unitPrice).roundToInt().toString()
+        } else {
+            ""
         }
     }
 
-    fun recalcFromTotalPrice() {
-        val liters = litersText.toDoubleOrNull()
-        val totalPrice = totalPriceText.toDoubleOrNull()
-        if (liters != null && totalPrice != null && liters > 0) {
-            unitPriceText = String.format(Locale.JAPAN, "%.1f", totalPrice / liters)
+    fun updateUnitPriceFrom(litersValue: String, totalPriceValue: String) {
+        val liters = litersValue.toDoubleOrNull()
+        val totalPrice = totalPriceValue.toDoubleOrNull()
+
+        unitPriceText = if (liters != null && totalPrice != null && liters > 0) {
+            String.format(Locale.JAPAN, "%.1f", totalPrice / liters)
+        } else {
+            ""
         }
     }
 
