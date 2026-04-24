@@ -274,20 +274,24 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                     odometerText = odometerText,
                     onOdometerChange = { odometerText = it },
                     litersText = litersText,
-                    onLitersChange = {
-                        litersText = it
-                        if (unitPriceText.isNotBlank()) recalcFromUnitPrice()
-                        else if (totalPriceText.isNotBlank()) recalcFromTotalPrice()
+                    onLitersChange = { newLiters ->
+                        litersText = newLiters
+
+                        if (unitPriceText.isNotBlank()) {
+                            updateTotalPriceFrom(newLiters, unitPriceText)
+                        } else if (totalPriceText.isNotBlank()) {
+                            updateUnitPriceFrom(newLiters, totalPriceText)
+                        }
                     },
                     unitPriceText = unitPriceText,
-                    onUnitPriceChange = {
-                        unitPriceText = it
-                        recalcFromUnitPrice()
+                    onUnitPriceChange = { newUnitPrice ->
+                        unitPriceText = newUnitPrice
+                        updateTotalPriceFrom(litersText, newUnitPrice)
                     },
                     totalPriceText = totalPriceText,
-                    onTotalPriceChange = {
-                        totalPriceText = it
-                        recalcFromTotalPrice()
+                    onTotalPriceChange = { newTotalPrice ->
+                        totalPriceText = newTotalPrice
+                        updateUnitPriceFrom(litersText, newTotalPrice)
                     },
                     isFullTank = isFullTank,
                     onFullTankChange = { isFullTank = it },
