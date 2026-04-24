@@ -1934,7 +1934,7 @@ fun FuelRecordEditDialog(
                 OutlinedTextField(
                     value = totalPriceText,
                     onValueChange = { totalPriceText = sanitizeIntInput(it) },
-                    label = { Text("支払金額 (円)") },
+                    label = { Text("支払金額 (yen)") },
                     singleLine = true
                 )
 
