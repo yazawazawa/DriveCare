@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!--
+        files-path: context.filesDir に対応。
+        BackupUtils が drivecare_backup.json を書き出す場所。
+    -->
+    <files-path
+        name="backup"
+        path="." />
+</paths>

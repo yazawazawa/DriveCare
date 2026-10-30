@@ -1,3 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DriveCare</string>
+
+    <!-- ── ナビゲーション ───────────────────────────── -->
+    <string name="nav_history">履歴</string>
+    <string name="nav_report">レポート</string>
+    <string name="nav_add">入力</string>
+    <string name="nav_settings">設定</string>
+
+    <!-- ── 画面タイトル ─────────────────────────────── -->
+    <string name="title_history">履歴</string>
+    <string name="title_maintenance_history">整備履歴</string>
+    <string name="title_report">レポート</string>
+    <string name="title_maintenance_report">整備レポート</string>
+    <string name="title_add_fuel">給油記録追加</string>
+    <string name="title_add_maintenance">整備記録追加</string>
+    <string name="title_settings">設定</string>
+    <string name="title_vehicle_management">車両登録</string>
+
+    <!-- ── 給油モード切替 ───────────────────────────── -->
+    <string name="mode_fuel">給油</string>
+    <string name="mode_maintenance">整備</string>
+
+    <!-- ── 共通ラベル ───────────────────────────────── -->
+    <string name="label_odometer">走行距離 (km)</string>
+    <string name="label_liters">給油量 (L)</string>
+    <string name="label_unit_price">単価 (円/L)</string>
+    <string name="label_total_price">合計金額 (円)</string>
+    <string name="label_full_tank">満タン</string>
+    <string name="label_fuel_type">燃料タイプ</string>
+    <string name="label_maker">メーカー</string>
+    <string name="label_model">車種</string>
+    <string name="label_tank_capacity">タンク容量 (L)</string>
+
+    <!-- ── ボタン ───────────────────────────────────── -->
+    <string name="btn_save">保存</string>
+    <string name="btn_cancel">キャンセル</string>
+    <string name="btn_delete">削除</string>
+    <string name="btn_edit">編集</string>
+    <string name="btn_add_vehicle">車両を追加</string>
+    <string name="btn_export_backup">バックアップを書き出す</string>
+    <string name="btn_import_backup">バックアップを読み込む</string>
+
+    <!-- ── エラー / フィードバック ─────────────────── -->
+    <string name="error_generic">エラーが発生しました。再度お試しください。</string>
+    <string name="error_load_failed">データの読み込みに失敗しました。</string>
+    <string name="error_save_failed">保存に失敗しました。</string>
+    <string name="error_no_backup">バックアップファイルが見つかりません。</string>
+    <string name="msg_backup_exported">バックアップを書き出しました。</string>
+    <string name="msg_backup_imported">バックアップを読み込みました。</string>
+
+    <!-- ── 空状態 ───────────────────────────────────── -->
+    <string name="empty_no_records">記録がありません。\n「入力」タブから追加してください。</string>
+    <string name="empty_no_vehicles">車両が登録されていません。\n「設定」タブから追加してください。</string>
+
+    <!-- ── アクセシビリティ ──────────────────────────── -->
+    <string name="cd_history">履歴</string>
+    <string name="cd_report">レポート</string>
+    <string name="cd_add">入力</string>
+    <string name="cd_settings">設定</string>
 </resources>

@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- アプリ本体のテーマ（Compose が描画するため NoActionBar） -->
     <style name="Theme.DriveCare" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!--
+        Splash Screen テーマ (Android 12+ SplashScreen API)
+        windowSplashScreenAnimatedIcon: 画像の中央部分だけ表示（自動クリップ）
+        windowSplashScreenIconBackgroundColor: アイコン背景色（丸く切り抜かれる）
+        windowSplashScreenBackground: スプラッシュ全体の背景色
+    -->
+    <style name="Theme.DriveCare.Splash" parent="Theme.SplashScreen">
+        <!-- スプラッシュ全体の背景: 白 -->
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <!-- アイコン画像（108dp × 108dp の安全領域に収まるよう SDK が自動クリップ） -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground_img</item>
+        <!-- アイコンの丸形背景色: ティール -->
+        <item name="windowSplashScreenIconBackgroundColor">@color/splash_icon_bg</item>
+        <!-- スプラッシュ終了後に適用するテーマ -->
+        <item name="postSplashScreenTheme">@style/Theme.DriveCare</item>
+    </style>
+
 </resources>

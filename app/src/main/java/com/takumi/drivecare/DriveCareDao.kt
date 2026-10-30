@@ -40,6 +40,12 @@ interface DriveCareDao {
     @Update
     suspend fun updateFuelRecord(record: FuelRecord)
 
+    @Update
+    suspend fun updateMaintenanceRecord(record: MaintenanceRecord)
+
+    @Delete
+    suspend fun deleteMaintenanceRecord(record: MaintenanceRecord)
+
     @Delete
     suspend fun deleteFuelRecord(record: FuelRecord)
 

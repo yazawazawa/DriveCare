@@ -1,13 +1,16 @@
 package com.takumi.drivecare
 
 import android.os.Bundle
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,10 +29,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.ArrowDropUp
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
@@ -82,10 +94,63 @@ import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.ZoneId
-import java.time.temporal.WeekFields
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.EvStation
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.sp
+import com.takumi.drivecare.BuildConfig
+import com.takumi.drivecare.ui.theme.DriveCareTheme
+import com.takumi.drivecare.ui.theme.Brand500
+import com.takumi.drivecare.ui.theme.Brand600
+import com.takumi.drivecare.ui.theme.Brand700
+import com.takumi.drivecare.ui.theme.Teal500
+import com.takumi.drivecare.ui.theme.Amber500
+import com.takumi.drivecare.ui.theme.Rose500
+import androidx.activity.compose.rememberLauncherForActivityResult
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.core.content.FileProvider
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -98,16 +163,16 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            DriveCareTheme {
                 DriveCareApp(viewModel = viewModel)
             }
         }
     }
 }
-
 enum class BottomTab(val label: String) {
     HISTORY("履歴"),
     REPORT("レポート"),
@@ -134,6 +199,43 @@ enum class ReportGraphType(val label: String) {
     TOTAL_COST("支払総額")
 }
 
+/**
+ * グラフ種別の表示順と、最後に選んだ種別をSharedPreferencesに保存する。
+ * 次回起動時は最後に表示したグラフを初期表示にする。
+ */
+object GraphTypePrefs {
+    private const val PREFS_NAME = "graph_type_prefs"
+    private const val KEY_ORDER = "order"
+    private const val KEY_LAST_SELECTED = "last_selected"
+
+    fun getOrder(context: Context): List<ReportGraphType> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val saved = prefs.getString(KEY_ORDER, null)
+            ?.split(",")
+            ?.mapNotNull { name -> runCatching { ReportGraphType.valueOf(name) }.getOrNull() }
+            ?: emptyList()
+        // 保存済みの順序を優先し、未保存の種別（将来追加分）は末尾に補完する
+        val remaining = ReportGraphType.entries.filter { it !in saved }
+        return saved + remaining
+    }
+
+    fun saveOrder(context: Context, order: List<ReportGraphType>) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_ORDER, order.joinToString(",") { it.name }).apply()
+    }
+
+    fun getLastSelected(context: Context): ReportGraphType {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val name = prefs.getString(KEY_LAST_SELECTED, null) ?: return ReportGraphType.FUEL_PRICE
+        return runCatching { ReportGraphType.valueOf(name) }.getOrDefault(ReportGraphType.FUEL_PRICE)
+    }
+
+    fun saveLastSelected(context: Context, type: ReportGraphType) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_LAST_SELECTED, type.name).apply()
+    }
+}
+
 data class ReportGraphMeta(
     val title: String,
     val unit: String,
@@ -145,11 +247,49 @@ data class ReportGraphMeta(
 fun DriveCareApp(viewModel: DriveCareViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
+    // 前回選択した車両を SharedPreferences で永続化
+    val prefs = remember { context.getSharedPreferences("drivecare_prefs", Context.MODE_PRIVATE) }
+
+    // 起動時: SharedPrefs から最後に使った vehicleId を読んで ViewModel に反映
+    LaunchedEffect(Unit) {
+        val savedId = prefs.getInt("last_vehicle_id", -1)
+        if (savedId != -1) {
+            viewModel.restoreLastVehicle(savedId)
+        }
+    }
+
+    // 選択車両が変わったら SharedPrefs に書き込む
+    LaunchedEffect(uiState.selectedVehicleId) {
+        uiState.selectedVehicleId?.let { id ->
+            prefs.edit().putInt("last_vehicle_id", id).apply()
+        }
+    }
 
     var selectedTab by remember { mutableStateOf(BottomTab.ADD) }
     var selectedRecordMode by remember { mutableStateOf(RecordMode.FUEL) }
     var settingsScreen by remember { mutableStateOf(SettingsScreen.TOP) }
     var backupMessage by remember { mutableStateOf<String?>(null) }
+    var pickBackupMessage by remember { mutableStateOf<String?>(null) }
+
+    // 車両管理など設定の子画面を表示中は、システムバックで一覧に戻れるようにする
+    // （未対応だと子画面からバックでアプリ自体が終了してしまう）
+    BackHandler(enabled = settingsScreen != SettingsScreen.TOP) {
+        settingsScreen = SettingsScreen.TOP
+    }
+
+    // ファイルピッカー（他端末からのバックアップ JSON を選んで読み込む）
+    val pickBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.importBackupFromUri(context, uri) { success ->
+                pickBackupMessage = if (success) "バックアップを読み込みました" else "読み込みに失敗しました"
+            }
+        }
+    }
 
     var makerText by remember { mutableStateOf("") }
     var modelText by remember { mutableStateOf("") }
@@ -162,7 +302,66 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
     var totalPriceText by remember { mutableStateOf("") }
     var selectedFuelDateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
     var isFullTank by remember { mutableStateOf(true) }
-    var selectedGraphType by remember { mutableStateOf(ReportGraphType.FUEL_PRICE) }
+    var selectedGraphType by remember { mutableStateOf(GraphTypePrefs.getLastSelected(context)) }
+    var graphTypeOrder by remember { mutableStateOf(GraphTypePrefs.getOrder(context)) }
+
+    // 整備フォームの状態（TopAppBarの保存アイコンから参照するためApp側で保持）
+    var maintDateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    var maintOdometerText by remember { mutableStateOf("") }
+    var maintCarWash by remember { mutableStateOf(false) }
+    var maintEngineOil by remember { mutableStateOf(false) }
+    var maintOilElement by remember { mutableStateOf(false) }
+    var maintWiper by remember { mutableStateOf(false) }
+    var maintTire by remember { mutableStateOf(false) }
+    var maintAirCleanerCleaning by remember { mutableStateOf(false) }
+    var maintAirCleanerReplacement by remember { mutableStateOf(false) }
+    var maintComment by remember { mutableStateOf("") }
+    // カスタム整備項目のチェック状態 (itemDefId → Boolean)
+    var maintCustomChecks by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+
+    // キーボード制御（doSaveFuel/doSaveMaintenance 両方から参照するためここで宣言）
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    fun showSaveError(message: String) {
+        coroutineScope.launch { snackbarHostState.showSnackbar(message) }
+    }
+
+    fun doSaveMaintenance() {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+        val vehicleId = uiState.selectedVehicleId
+        if (vehicleId == null) {
+            showSaveError("車両を選択してください")
+            return
+        }
+        val odometer = maintOdometerText.toDoubleOrNull()
+        if (odometer == null) {
+            showSaveError("走行距離を入力してください")
+            return
+        }
+        viewModel.addMaintenanceRecord(
+            vehicleId = vehicleId,
+            timestamp = maintDateMillis,
+            odometer = odometer,
+            carWashDone = maintCarWash,
+            engineOilDone = maintEngineOil,
+            oilElementDone = maintOilElement,
+            wiperDone = maintWiper,
+            tireDone = maintTire,
+            airCleanerCleaningDone = maintAirCleanerCleaning,
+            airCleanerReplacementDone = maintAirCleanerReplacement,
+            comment = maintComment,
+            customItemsDone = maintCustomChecks.entries.filter { it.value }.joinToString(",") { it.key }
+        )
+        maintOdometerText = ""
+        maintComment = ""
+        maintCarWash = false; maintEngineOil = false; maintOilElement = false
+        maintWiper = false; maintTire = false
+        maintAirCleanerCleaning = false; maintAirCleanerReplacement = false
+        maintCustomChecks = emptyMap()
+        selectedTab = BottomTab.HISTORY
+    }
 
     fun updateTotalPriceFrom(litersValue: String, unitPriceValue: String) {
         val liters = litersValue.toDoubleOrNull()
@@ -210,64 +409,222 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
         }
     }
 
+    // エラーダイアログ
+    val errorMessage = uiState.errorMessage
+    if (errorMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearError() },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearError() }) { Text("閉じる") }
+            },
+            title = { Text("エラー") },
+            text = { Text(errorMessage) }
+        )
+    }
+
+    fun doSaveFuel() {
+        keyboardController?.hide()
+        focusManager.clearFocus()
+        val vehicleId = uiState.selectedVehicleId
+        val odometer = odometerText.toDoubleOrNull()
+        val liters = litersText.toDoubleOrNull()
+        val unitPrice = unitPriceText.toDoubleOrNull()
+        val totalPrice = totalPriceText.toDoubleOrNull()?.roundToInt()
+        if (vehicleId == null) {
+            showSaveError("車両を選択してください")
+            return
+        }
+        if (odometer == null) {
+            showSaveError("走行距離を入力してください")
+            return
+        }
+        if (liters == null) {
+            showSaveError("給油量を入力してください")
+            return
+        }
+        if (unitPrice == null) {
+            showSaveError("単価を入力してください")
+            return
+        }
+        if (totalPrice == null) {
+            showSaveError("支払金額を入力してください")
+            return
+        }
+        viewModel.addFuelRecord(
+            vehicleId = vehicleId,
+            odometer = odometer,
+            liters = liters,
+            unitPrice = unitPrice,
+            totalPrice = totalPrice,
+            isFullTank = isFullTank,
+            timestamp = selectedFuelDateMillis
+        )
+        odometerText = ""; litersText = ""; unitPriceText = ""; totalPriceText = ""
+        isFullTank = true
+        selectedTab = BottomTab.HISTORY
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text(screenTitle) },
-                actions = {
-                    Text(text = "給油", style = MaterialTheme.typography.bodySmall)
-                    Switch(
-                        checked = selectedRecordMode == RecordMode.MAINTENANCE,
-                        onCheckedChange = { isMaintenance ->
-                            selectedRecordMode = if (isMaintenance) {
-                                RecordMode.MAINTENANCE
-                            } else {
-                                RecordMode.FUEL
+            // ── クリーンモダン TopAppBar（白ベース・インディゴアクセント） ─
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 1.dp
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // アクセントバー + タイトル
+                        Box(
+                            modifier = Modifier
+                                .width(4.dp).height(32.dp)
+                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = screenTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "DriveCare",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                letterSpacing = 2.sp
+                            )
+                        }
+                        // 給油/整備 モードトグル（ピルスタイル）
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    "⛽",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (selectedRecordMode == RecordMode.FUEL)
+                                        MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
+                                Switch(
+                                    checked = selectedRecordMode == RecordMode.MAINTENANCE,
+                                    onCheckedChange = { isMaint ->
+                                        selectedRecordMode = if (isMaint) RecordMode.MAINTENANCE else RecordMode.FUEL
+                                    },
+                                    modifier = Modifier.size(width = 44.dp, height = 24.dp)
+                                )
+                                Text(
+                                    "🔧",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (selectedRecordMode == RecordMode.MAINTENANCE)
+                                        MaterialTheme.colorScheme.secondary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                )
                             }
                         }
-                    )
-                    Text(text = "整備", style = MaterialTheme.typography.bodySmall)
+                        // ADD タブのとき保存アイコン（給油・整備両モード）
+                        if (selectedTab == BottomTab.ADD) {
+                            FilledIconButton(
+                                onClick = {
+                                    if (selectedRecordMode == RecordMode.FUEL) doSaveFuel()
+                                    else doSaveMaintenance()
+                                },
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = if (selectedRecordMode == RecordMode.FUEL)
+                                        MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.secondary,
+                                    contentColor = Color.White
+                                )
+                            ) {
+                                Icon(Icons.Filled.Save, contentDescription = "保存")
+                            }
+                        }
+                    }
+                    // 底線
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline)
                 }
-            )
+            }
         },
         bottomBar = {
-            NavigationBar(modifier = Modifier.navigationBarsPadding()) {
-                NavigationBarItem(
-                    selected = selectedTab == BottomTab.HISTORY,
-                    onClick = {
-                        selectedTab = BottomTab.HISTORY
-                        settingsScreen = SettingsScreen.TOP
-                    },
-                    icon = { Icon(Icons.Filled.List, contentDescription = "履歴") },
-                    label = { Text("履歴") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == BottomTab.REPORT,
-                    onClick = {
-                        selectedTab = BottomTab.REPORT
-                        settingsScreen = SettingsScreen.TOP
-                    },
-                    icon = { Icon(Icons.Filled.ShowChart, contentDescription = "レポート") },
-                    label = { Text("レポート") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == BottomTab.ADD,
-                    onClick = {
-                        selectedTab = BottomTab.ADD
-                        settingsScreen = SettingsScreen.TOP
-                    },
-                    icon = { Icon(Icons.Filled.AddCircle, contentDescription = "入力") },
-                    label = { Text("入力") }
-                )
-                NavigationBarItem(
-                    selected = selectedTab == BottomTab.SETTINGS,
-                    onClick = {
-                        selectedTab = BottomTab.SETTINGS
-                        settingsScreen = SettingsScreen.TOP
-                    },
-                    icon = { Icon(Icons.Filled.Settings, contentDescription = "設定") },
-                    label = { Text("設定") }
-                )
+            // ── クリーンフローティングナビゲーション ─────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 12.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        // 履歴
+                        val histSelected = selectedTab == BottomTab.HISTORY
+                        NavIconItem(
+                            icon = Icons.Filled.History,
+                            label = "履歴",
+                            selected = histSelected,
+                            onClick = { selectedTab = BottomTab.HISTORY; settingsScreen = SettingsScreen.TOP }
+                        )
+                        // レポート
+                        val repSelected = selectedTab == BottomTab.REPORT
+                        NavIconItem(
+                            icon = Icons.Filled.ShowChart,
+                            label = "レポート",
+                            selected = repSelected,
+                            onClick = { selectedTab = BottomTab.REPORT; settingsScreen = SettingsScreen.TOP }
+                        )
+                        // 入力 (FAB スタイル中央)
+                        val addSelected = selectedTab == BottomTab.ADD
+                        Box(contentAlignment = Alignment.Center) {
+                            FilledIconButton(
+                                onClick = { selectedTab = BottomTab.ADD; settingsScreen = SettingsScreen.TOP },
+                                modifier = Modifier.size(52.dp),
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = if (addSelected) MaterialTheme.colorScheme.primary
+                                                     else MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = if (addSelected) Color.White
+                                                   else MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(
+                                    Icons.Filled.AddCircle,
+                                    contentDescription = "入力",
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
+                        // 設定
+                        val setSelected = selectedTab == BottomTab.SETTINGS
+                        NavIconItem(
+                            icon = Icons.Filled.Settings,
+                            label = "設定",
+                            selected = setSelected,
+                            onClick = { selectedTab = BottomTab.SETTINGS; settingsScreen = SettingsScreen.TOP }
+                        )
+                    }
+                }
             }
         }
     ) { innerPadding ->
@@ -309,9 +666,9 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                         vehicles = uiState.vehicles,
                         selectedVehicleId = uiState.selectedVehicleId,
                         onVehicleSelected = { viewModel.selectVehicle(it) },
-
-                        records = selectedMaintenanceRecords
-
+                        records = selectedMaintenanceRecords,
+                        onUpdateMaintenanceRecord = { viewModel.updateMaintenanceRecord(it) },
+                        onDeleteMaintenanceRecord = { viewModel.deleteMaintenanceRecord(it) }
                     )
                 } else {
                     ReportScreen(
@@ -325,7 +682,15 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                         selectedRange = uiState.reportRange,
                         onRangeSelected = { viewModel.setReportRange(it) },
                         selectedGraphType = selectedGraphType,
-                        onGraphTypeSelected = { selectedGraphType = it }
+                        onGraphTypeSelected = {
+                            selectedGraphType = it
+                            GraphTypePrefs.saveLastSelected(context, it)
+                        },
+                        graphTypeOrder = graphTypeOrder,
+                        onGraphTypeOrderChanged = {
+                            graphTypeOrder = it
+                            GraphTypePrefs.saveOrder(context, it)
+                        }
                     )
                 }
             }
@@ -339,20 +704,23 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                         vehicles = uiState.vehicles,
                         selectedVehicleId = uiState.selectedVehicleId,
                         onVehicleSelected = { viewModel.selectVehicle(it) },
-                        onSave = { vehicleId, timestamp, odometer, carWashDone, engineOilDone, elementDone, wiperDone, tireDone, airCleanerCleaningDone, airCleanerReplacementDone ->
-                            viewModel.addMaintenanceRecord(
-                                vehicleId = vehicleId,
-                                timestamp = timestamp,
-                                odometer = odometer,
-                                carWashDone = carWashDone,
-                                engineOilDone = engineOilDone,
-                                oilElementDone = elementDone,
-                                wiperDone = wiperDone,
-                                tireDone = tireDone,
-                                airCleanerCleaningDone = airCleanerCleaningDone,
-                                airCleanerReplacementDone = airCleanerReplacementDone
-                            )
-                            selectedTab = BottomTab.HISTORY
+                        selectedDateMillis = maintDateMillis,
+                        onDateSelected = { maintDateMillis = it },
+                        odometerText = maintOdometerText,
+                        onOdometerChange = { maintOdometerText = it },
+                        carWashDone = maintCarWash, onCarWashChange = { maintCarWash = it },
+                        engineOilDone = maintEngineOil, onEngineOilChange = { maintEngineOil = it },
+                        oilElementDone = maintOilElement, onOilElementChange = { maintOilElement = it },
+                        wiperDone = maintWiper, onWiperChange = { maintWiper = it },
+                        tireDone = maintTire, onTireChange = { maintTire = it },
+                        airCleanerCleaningDone = maintAirCleanerCleaning, onAirCleanerCleaningChange = { maintAirCleanerCleaning = it },
+                        airCleanerReplacementDone = maintAirCleanerReplacement, onAirCleanerReplacementChange = { maintAirCleanerReplacement = it },
+                        comment = maintComment, onCommentChange = { maintComment = it },
+                        customChecks = maintCustomChecks, onCustomChecksChange = { maintCustomChecks = it },
+                        onAddItemDef = { label, emoji, intervalKm, intervalMonths, nextDateMs, trigger ->
+                            uiState.selectedVehicleId?.let { vid ->
+                                MaintenanceItemDefRepository.addCustomItem(context, vid, label, emoji, intervalKm, intervalMonths, nextDateMs, trigger)
+                            }
                         }
                     )
                 } else {
@@ -386,36 +754,7 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                         onDateSelected = { selectedFuelDateMillis = it },
                         isFullTank = isFullTank,
                         onFullTankChange = { isFullTank = it },
-                        onSaveFuelRecord = {
-                            val vehicleId = uiState.selectedVehicleId
-                            val odometer = odometerText.toDoubleOrNull()
-                            val liters = litersText.toDoubleOrNull()
-                            val unitPrice = unitPriceText.toDoubleOrNull()
-                            val totalPrice = totalPriceText.toDoubleOrNull()?.roundToInt()
-
-                            if (vehicleId != null &&
-                                odometer != null &&
-                                liters != null &&
-                                unitPrice != null &&
-                                totalPrice != null
-                            ) {
-                                viewModel.addFuelRecord(
-                                    vehicleId = vehicleId,
-                                    odometer = odometer,
-                                    liters = liters,
-                                unitPrice = unitPrice,
-                                totalPrice = totalPrice,
-                                isFullTank = isFullTank,
-                                timestamp = selectedFuelDateMillis
-                            )
-                            odometerText = ""
-                            litersText = ""
-                            unitPriceText = ""
-                            totalPriceText = ""
-                                isFullTank = true
-                                selectedTab = BottomTab.HISTORY
-                            }
-                        }
+                        onSaveFuelRecord = { doSaveFuel() }
                     )
 
                 }
@@ -429,13 +768,25 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                                 .fillMaxSize()
                                 .padding(innerPadding),
                             vehicles = uiState.vehicles,
-                            backupMessage = backupMessage,
+                            backupMessage = (backupMessage ?: pickBackupMessage),
+                            appVersion = BuildConfig.VERSION_NAME,
                             onOpenVehicleManagement = {
                                 settingsScreen = SettingsScreen.VEHICLE_MANAGEMENT
                             },
                             onExportBackup = {
-                                viewModel.exportBackup(context) {
-                                    backupMessage = "保存先: $it"
+                                viewModel.exportBackup(context) { result ->
+                                    backupMessage = result.fold(
+                                        onSuccess = { "バックアップを共有しました" },
+                                        onFailure = { "エクスポートに失敗しました" }
+                                    )
+                                }
+                            },
+                            onSaveToDevice = {
+                                viewModel.saveBackupToDevice(context) { result ->
+                                    backupMessage = result.fold(
+                                        onSuccess = { name -> "端末に保存しました: $name" },
+                                        onFailure = { "保存に失敗しました" }
+                                    )
                                 }
                             },
                             onImportBackup = {
@@ -446,6 +797,9 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                                         "バックアップファイルが見つかりません"
                                     }
                                 }
+                            },
+                            onPickAndImportBackup = {
+                                pickBackupLauncher.launch("application/json")
                             }
                         )
                     }
@@ -466,7 +820,13 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                             onFuelTypeSelected = { selectedFuelType = it },
                             onAddVehicle = {
                                 val tankCapacity = tankCapacityText.toDoubleOrNull()
-                                if (makerText.isNotBlank() && modelText.isNotBlank() && tankCapacity != null) {
+                                if (makerText.isBlank()) {
+                                    showSaveError("メーカーを入力してください")
+                                } else if (modelText.isBlank()) {
+                                    showSaveError("車種を入力してください")
+                                } else if (tankCapacity == null) {
+                                    showSaveError("タンク容量を入力してください")
+                                } else {
                                     viewModel.addVehicle(
                                         maker = makerText.trim(),
                                         model = modelText.trim(),
@@ -494,1291 +854,61 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
 
 
 @Composable
-fun MaintenanceModeScreen(
-    modifier: Modifier = Modifier,
-    title: String
-) {
-    Box(
-        modifier = modifier.padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "$title はこれから追加します。\nフッターのタブ構成（履歴 / レポート / 入力 / 設定）はそのままです。",
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyLarge
-        )
-    }
-}
-
-@Composable
-fun MaintenanceHistoryScreen(
-    modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    selectedVehicleId: Int?,
-    onVehicleSelected: (Int) -> Unit,
-    records: List<MaintenanceRecord>,
-    onUpdateMaintenanceRecord: (MaintenanceRecord) -> Unit,
-    onDeleteMaintenanceRecord: (MaintenanceRecord) -> Unit
-) {
-    var detailRecord by remember { mutableStateOf<MaintenanceRecord?>(null) }
-    var editRecord by remember { mutableStateOf<MaintenanceRecord?>(null) }
-    var deleteRecord by remember { mutableStateOf<MaintenanceRecord?>(null) }
-
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        if (vehicles.isEmpty()) {
-            Text("まだ車両が登録されていません。設定 > 車両登録 から追加してください。")
-            return@Column
-        }
-
-        VehicleDropdown(
-            vehicles = vehicles,
-            selectedVehicleId = selectedVehicleId,
-            onVehicleSelected = onVehicleSelected
-        )
-
-        if (records.isEmpty()) {
-            Text("整備履歴はまだありません。")
-        } else {
-            records.forEach { record ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { detailRecord = record },
-                            onLongClick = { editRecord = record }
-                        )
-                ) {
-                    MaintenanceSummaryCard(record = record)
-                }
-            }
-        }
-    }
-
-    detailRecord?.let { record ->
-        AlertDialog(
-            onDismissRequest = { detailRecord = null },
-            confirmButton = {
-                TextButton(onClick = { detailRecord = null }) {
-                    Text("閉じる")
-                }
-            },
-            title = { Text("整備詳細") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("日時: ${formatTimestamp(record.timestamp)}")
-                    Text("走行距離: ${formatDouble(record.odometer)} km")
-                    if (record.carWashDone) Text("・洗車")
-                    if (record.engineOilDone) Text("・エンジンオイル交換")
-                    if (record.oilElementDone) Text("・エレメント交換")
-                    if (record.wiperDone) Text("・ワイパー交換")
-                    if (record.tireDone) Text("・タイヤ交換")
-                    if (record.airCleanerCleaningDone) Text("・エアクリーナ清掃")
-                    if (record.airCleanerReplacementDone) Text("・エアクリーナ交換")
-                }
-            }
-        )
-    }
-
-    editRecord?.let { record ->
-        MaintenanceRecordEditDialog(
-            record = record,
-            onDismiss = { editRecord = null },
-            onSave = {
-                onUpdateMaintenanceRecord(it)
-                editRecord = null
-            },
-            onDelete = {
-                deleteRecord = it
-                editRecord = null
-            }
-        )
-    }
-
-    deleteRecord?.let { record ->
-        AlertDialog(
-            onDismissRequest = { deleteRecord = null },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteMaintenanceRecord(record)
-                        deleteRecord = null
-                    }
-                ) {
-                    Text("削除")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteRecord = null }) {
-                    Text("キャンセル")
-                }
-            },
-            title = { Text("整備記録を削除") },
-            text = { Text("この整備記録を削除しますか？") }
-        )
-    }
-}
-
-data class MaintenanceReportItem(
-    val label: String,
-    val record: MaintenanceRecord?,
-    val intervalKm: Double?
-)
-@Composable
-fun MaintenanceReportScreen(
-    modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    selectedVehicleId: Int?,
-    onVehicleSelected: (Int) -> Unit,
-    records: List<MaintenanceRecord>
-) {
-    val sortedRecords = records.sortedByDescending { it.timestamp }
-
-    fun latestRecordFor(predicate: (MaintenanceRecord) -> Boolean): MaintenanceRecord? {
-        return sortedRecords.firstOrNull(predicate)
-    }
-
-    val latestOdometer = sortedRecords.maxOfOrNull { it.odometer }
-
-    val items = listOf(
-        MaintenanceReportItem("洗車", latestRecordFor { it.carWashDone }, null),
-        MaintenanceReportItem("エンジンオイル交換", latestRecordFor { it.engineOilDone }, 10000.0),
-        MaintenanceReportItem("エレメント交換", latestRecordFor { it.oilElementDone }, 10000.0),
-        MaintenanceReportItem("ワイパー交換", latestRecordFor { it.wiperDone }, 20000.0),
-        MaintenanceReportItem("タイヤ交換", latestRecordFor { it.tireDone }, 20000.0),
-        MaintenanceReportItem("エアクリーナ清掃", latestRecordFor { it.airCleanerCleaningDone }, 5000.0),
-        MaintenanceReportItem("エアクリーナ交換", latestRecordFor { it.airCleanerReplacementDone }, 20000.0)
-    )
-
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        if (vehicles.isEmpty()) {
-            Text("まだ車両が登録されていません。設定 > 車両登録 から追加してください。")
-            return@Column
-        }
-
-        VehicleDropdown(
-            vehicles = vehicles,
-            selectedVehicleId = selectedVehicleId,
-            onVehicleSelected = onVehicleSelected
-        )
-
-        if (records.isEmpty()) {
-            Text("整備記録はまだありません。")
-            return@Column
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text("整備レポート", style = MaterialTheme.typography.titleMedium)
-                HorizontalDivider()
-
-                items.forEach { item ->
-                    MaintenanceReportRow(
-                        item = item,
-                        latestOdometer = latestOdometer
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun MaintenanceReportRow(
-    item: MaintenanceReportItem,
-    latestOdometer: Double?
-) {
-    val record = item.record
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
-    ) {
-        Text(
-            text = item.label,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold
-        )
-
-        if (record == null) {
-            Text(
-                text = "未実施",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            item.intervalKm?.let {
-                Text(
-                    text = "交換目安: ${formatDouble(it)} kmごと",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            return@Column
-        }
-
-        Text(
-            text = "前回: ${formatDateOnly(record.timestamp)} / ${formatDouble(record.odometer)} km",
-            style = MaterialTheme.typography.bodyMedium
-        )
-
-        val intervalKm = item.intervalKm
-        if (intervalKm != null && latestOdometer != null) {
-            val usedKm = latestOdometer - record.odometer
-            val remainingKm = intervalKm - usedKm
-
-            val remainingText = if (remainingKm >= 0) {
-                "あと ${formatDouble(remainingKm)} km"
-            } else {
-                "目安超過 ${formatDouble(-remainingKm)} km"
-            }
-
-            Text(
-                text = "目安: ${formatDouble(intervalKm)} kmごと / $remainingText",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (remainingKm >= 0) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.error
-                }
-            )
-        }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
-fun MaintenanceAddScreen(
-    modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    selectedVehicleId: Int?,
-    onVehicleSelected: (Int) -> Unit,
-    onSave: (
-        vehicleId: Int,
-        timestamp: Long,
-        odometer: Double,
-        carWashDone: Boolean,
-        engineOilDone: Boolean,
-        oilElementDone: Boolean,
-        wiperDone: Boolean,
-        tireDone: Boolean,
-        airCleanerCleaningDone: Boolean,
-        airCleanerReplacementDone: Boolean
-    ) -> Unit
-) {
-    var selectedDateMillis by remember { mutableStateOf(System.currentTimeMillis()) }
-    var odometerText by remember { mutableStateOf("") }
-    var carWashDone by remember { mutableStateOf(false) }
-    var engineOilDone by remember { mutableStateOf(false) }
-    var oilElementDone by remember { mutableStateOf(false) }
-    var wiperDone by remember { mutableStateOf(false) }
-    var tireDone by remember { mutableStateOf(false) }
-    var airCleanerCleaningDone by remember { mutableStateOf(false) }
-    var airCleanerReplacementDone by remember { mutableStateOf(false) }
-    var showDatePicker by remember { mutableStateOf(false) }
-
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        selectedDateMillis = datePickerState.selectedDateMillis ?: selectedDateMillis
-                        showDatePicker = false
-                    }
-                ) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("キャンセル")
-                }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        if (vehicles.isEmpty()) {
-            Text("まだ車両が登録されていません。設定 > 車両登録 から追加してください。")
-            return@Column
-        }
-
-        VehicleDropdown(
-            vehicles = vehicles,
-            selectedVehicleId = selectedVehicleId,
-            onVehicleSelected = onVehicleSelected
-        )
-
-        Button(
-            onClick = { showDatePicker = true },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("日付: ${formatDateOnly(selectedDateMillis)}")
-        }
-
-        OutlinedTextField(
-            value = odometerText,
-            onValueChange = { odometerText = sanitizeDecimalInput(it) },
-            label = { Text("走行距離 (km)") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth()
-        )
-        CheckboxRow("洗車", carWashDone) { carWashDone = it }
-        CheckboxRow("エンジンオイル交換", engineOilDone) { engineOilDone = it }
-        CheckboxRow("エレメント交換", oilElementDone) { oilElementDone = it }
-        CheckboxRow("ワイパー交換", wiperDone) { wiperDone = it }
-        CheckboxRow("タイヤ交換", tireDone) { tireDone = it }
-        CheckboxRow("エアクリーナ清掃", airCleanerCleaningDone) { airCleanerCleaningDone = it }
-        CheckboxRow("エアクリーナ交換", airCleanerReplacementDone) { airCleanerReplacementDone = it }
-
-        Button(
-            onClick = {
-                val vehicleId = selectedVehicleId ?: return@Button
-                val odometer = odometerText.toDoubleOrNull() ?: return@Button
-                onSave(
-                    vehicleId,
-                    selectedDateMillis,
-                    odometer,
-                    carWashDone,
-                    engineOilDone,
-                    oilElementDone,
-                    wiperDone,
-                    tireDone,
-                    airCleanerCleaningDone,
-                    airCleanerReplacementDone
-                )
-                odometerText = ""
-                carWashDone = false
-                engineOilDone = false
-                oilElementDone = false
-                wiperDone = false
-                tireDone = false
-                airCleanerCleaningDone = false
-                airCleanerReplacementDone = false
-            },
-            enabled = selectedVehicleId != null,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("整備項目を保存")
-        }
-    }
-}
-
-@Composable
-fun CheckboxRow(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
-        Text(text = label)
-    }
-}
-
-@Composable
-fun MaintenanceSummaryCard(record: MaintenanceRecord) {
-    val rows = listOf(
-        "洗車" to record.carWashDone,
-        "エンジンオイル交換" to record.engineOilDone,
-        "エレメント交換" to record.oilElementDone,
-        "ワイパー交換" to record.wiperDone,
-        "タイヤ交換" to record.tireDone,
-        "エアクリーナ清掃" to record.airCleanerCleaningDone,
-        "エアクリーナ交換" to record.airCleanerReplacementDone
-    )
-
-    Card {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(formatTimestamp(record.timestamp), style = MaterialTheme.typography.titleSmall)
-            Text("走行距離: ${formatDouble(record.odometer)} km")
-            rows.forEach { (label, checked) ->
-                if (checked) {
-                    Text("・$label")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun HistoryScreen(
-    modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    selectedVehicleId: Int?,
-    onVehicleSelected: (Int) -> Unit,
-    records: List<FuelRecord>,
-    onUpdateFuelRecord: (FuelRecord) -> Unit,
-    onDeleteFuelRecord: (FuelRecord) -> Unit
-) {
-    val selectedVehicle = vehicles.find { it.id == selectedVehicleId }
-    var detailRecord by remember { mutableStateOf<FuelRecord?>(null) }
-    var editRecord by remember { mutableStateOf<FuelRecord?>(null) }
-    var deleteRecord by remember { mutableStateOf<FuelRecord?>(null) }
-
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        if (vehicles.isEmpty()) {
-            Text("まだ車両が登録されていません。設定 > 車両登録 から追加してください。")
-            return@Column
-        }
-
-        VehicleDropdown(
-            vehicles = vehicles,
-            selectedVehicleId = selectedVehicleId,
-            onVehicleSelected = onVehicleSelected
-        )
-
-        if (selectedVehicle == null) {
-            Text("車両を選択してください。")
-        } else if (records.isEmpty()) {
-            Text("${selectedVehicle.displayName} の給油履歴はまだありません。")
-        } else {
-            records.forEach { record ->
-                val distanceFromPrevious = calculateDistanceFromPreviousForVehicle(
-                    records = records,
-                    currentRecord = record
-                )
-
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .combinedClickable(
-                            onClick = { detailRecord = record },
-                            onLongClick = { editRecord = record }
-                        )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = formatTimestamp(record.timestamp),
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text("走行距離: ${formatDouble(record.odometer)} km")
-                        Text("前回からの距離: $distanceFromPrevious")
-                        Text("給油量: ${formatDouble(record.liters)} L")
-                    }
-                }
-            }
-        }
-    }
-
-    detailRecord?.let { record ->
-        AlertDialog(
-            onDismissRequest = { detailRecord = null },
-            confirmButton = {
-                TextButton(onClick = { detailRecord = null }) {
-                    Text("閉じる")
-                }
-            },
-            title = { Text(selectedVehicle?.displayName ?: "給油詳細") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("日時: ${formatTimestamp(record.timestamp)}")
-                    Text("走行距離: ${formatDouble(record.odometer)} km")
-                    Text("前回からの距離: ${calculateDistanceFromPreviousForVehicle(records, record)}")
-                    Text("給油量: ${formatDouble(record.liters)} L")
-                    Text("単価: ${String.format(Locale.JAPAN, "%.1f", record.unitPrice)} 円/L")
-                    Text("支払金額: ${record.price} 円")
-                    Text("満タン: ${if (record.isFullTank) "はい" else "いいえ"}")
-                    Text("燃費: ${calculateFuelEfficiencyTextForVehicle(records, record)}")
-                }
-            }
-        )
-    }
-
-    @Composable
-    @OptIn(ExperimentalMaterial3Api::class)
-    fun MaintenanceRecordEditDialog(
-        record: MaintenanceRecord,
-        onDismiss: () -> Unit,
-        onSave: (MaintenanceRecord) -> Unit,
-        onDelete: (MaintenanceRecord) -> Unit
-    ) {
-        var selectedDateMillis by remember { mutableStateOf(record.timestamp) }
-        var odometerText by remember { mutableStateOf(formatDouble(record.odometer)) }
-
-        var carWashDone by remember { mutableStateOf(record.carWashDone) }
-        var engineOilDone by remember { mutableStateOf(record.engineOilDone) }
-        var oilElementDone by remember { mutableStateOf(record.oilElementDone) }
-        var wiperDone by remember { mutableStateOf(record.wiperDone) }
-        var tireDone by remember { mutableStateOf(record.tireDone) }
-        var airCleanerCleaningDone by remember { mutableStateOf(record.airCleanerCleaningDone) }
-        var airCleanerReplacementDone by remember { mutableStateOf(record.airCleanerReplacementDone) }
-
-        var showDatePicker by remember { mutableStateOf(false) }
-        var errorText by remember { mutableStateOf<String?>(null) }
-
-        if (showDatePicker) {
-            val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
-
-            DatePickerDialog(
-                onDismissRequest = { showDatePicker = false },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            selectedDateMillis = datePickerState.selectedDateMillis ?: selectedDateMillis
-                            showDatePicker = false
-                        }
-                    ) {
-                        Text("OK")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showDatePicker = false }) {
-                        Text("キャンセル")
-                    }
-                }
-            ) {
-                DatePicker(state = datePickerState)
-            }
-        }
-
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val odometer = odometerText.toDoubleOrNull()
-
-                        if (odometer == null) {
-                            errorText = "走行距離を確認してください"
-                            return@TextButton
-                        }
-
-                        onSave(
-                            record.copy(
-                                timestamp = selectedDateMillis,
-                                odometer = odometer,
-                                carWashDone = carWashDone,
-                                engineOilDone = engineOilDone,
-                                oilElementDone = oilElementDone,
-                                wiperDone = wiperDone,
-                                tireDone = tireDone,
-                                airCleanerCleaningDone = airCleanerCleaningDone,
-                                airCleanerReplacementDone = airCleanerReplacementDone
-                            )
-                        )
-                    }
-                ) {
-                    Text("保存")
-                }
-            },
-            dismissButton = {
-                Row {
-                    TextButton(onClick = { onDelete(record) }) {
-                        Text("削除")
-                    }
-                    TextButton(onClick = onDismiss) {
-                        Text("キャンセル")
-                    }
-                }
-            },
-            title = { Text("整備記録を編集") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { showDatePicker = true },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("日付: ${formatDateOnly(selectedDateMillis)}")
-                    }
-
-                    OutlinedTextField(
-                        value = odometerText,
-                        onValueChange = { odometerText = sanitizeDecimalInput(it) },
-                        label = { Text("走行距離 (km)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    CheckboxRow("洗車", carWashDone) { carWashDone = it }
-                    CheckboxRow("エンジンオイル交換", engineOilDone) { engineOilDone = it }
-                    CheckboxRow("エレメント交換", oilElementDone) { oilElementDone = it }
-                    CheckboxRow("ワイパー交換", wiperDone) { wiperDone = it }
-                    CheckboxRow("タイヤ交換", tireDone) { tireDone = it }
-                    CheckboxRow("エアクリーナ清掃", airCleanerCleaningDone) { airCleanerCleaningDone = it }
-                    CheckboxRow("エアクリーナ交換", airCleanerReplacementDone) { airCleanerReplacementDone = it }
-
-                    errorText?.let {
-                        Text(
-                            text = it,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            }
-        )
-    }
-
-    editRecord?.let { record ->
-        FuelRecordEditDialog(
-            record = record,
-            onDismiss = { editRecord = null },
-            onSave = {
-                onUpdateFuelRecord(it)
-                editRecord = null
-            },
-            onDelete = {
-                deleteRecord = it
-                editRecord = null
-            }
-        )
-    }
-
-    deleteRecord?.let { record ->
-        AlertDialog(
-            onDismissRequest = { deleteRecord = null },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteFuelRecord(record)
-                        deleteRecord = null
-                    }
-                ) {
-                    Text("削除")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteRecord = null }) {
-                    Text("キャンセル")
-                }
-            },
-            title = { Text("給油記録を削除") },
-            text = { Text("この給油記録を削除しますか？") }
-        )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ReportScreen(
-    modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    selectedVehicleId: Int?,
-    onVehicleSelected: (Int) -> Unit,
-    fuelRecords: List<FuelRecord>,
-    selectedRange: ReportRange,
-    onRangeSelected: (ReportRange) -> Unit,
-    selectedGraphType: ReportGraphType,
-    onGraphTypeSelected: (ReportGraphType) -> Unit
-) {
-    val selectedVehicle = vehicles.find { it.id == selectedVehicleId }
-
-    val baseRecords = fuelRecords
-        .filter { it.vehicleId == selectedVehicleId }
-        .sortedBy { it.timestamp }
-
-    val filteredRecords = filterFuelRecordsByRange(baseRecords, selectedRange)
-
-    val graphMeta = remember(selectedGraphType) {
-        when (selectedGraphType) {
-            ReportGraphType.FUEL_PRICE -> ReportGraphMeta(
-                title = "燃料価格推移",
-                unit = "円/L",
-                color = Color(0xFFF59E0B)
-            )
-            ReportGraphType.DISTANCE -> ReportGraphMeta(
-                title = "給油間走行距離",
-                unit = "km",
-                color = Color(0xFF3B82F6)
-            )
-            ReportGraphType.EFFICIENCY -> ReportGraphMeta(
-                title = "燃費推移",
-                unit = "km/L",
-                color = Color(0xFF10B981)
-            )
-            ReportGraphType.TOTAL_COST -> ReportGraphMeta(
-                title = "累計支払額",
-                unit = "円",
-                color = Color(0xFF8B5CF6)
-            )
-        }
-    }
-
-    val chartSeries: List<Pair<Float, String>> = when (selectedGraphType) {
-        ReportGraphType.FUEL_PRICE -> {
-            filteredRecords.map { it.unitPrice.toFloat() to shortDate(it.timestamp) }
-        }
-        ReportGraphType.DISTANCE -> {
-            buildDistanceSeries(filteredRecords).map { it.first.toFloat() to it.second }
-        }
-        ReportGraphType.EFFICIENCY -> {
-            buildEfficiencySeries(filteredRecords).map { it.first.toFloat() to it.second }
-        }
-        ReportGraphType.TOTAL_COST -> {
-            buildCumulativeCostSeries(filteredRecords).map { it.first.toFloat() to it.second }
-        }
-    }
-
-    val latestValue = chartSeries.lastOrNull()?.first
-    val avgValue = if (chartSeries.isNotEmpty()) chartSeries.map { it.first }.average().toFloat() else null
-    val maxValue = chartSeries.maxOfOrNull { it.first }
-
-    Box(
-        modifier = modifier.fillMaxSize()
+fun NavIconItem(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else Color.Transparent,
+        modifier = Modifier.clickable(onClick = onClick)
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-                .padding(bottom = 92.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
-            if (vehicles.isEmpty()) {
-                Text("車両が未登録です。設定 > 車両登録 から追加してください。")
-                return@Column
-            }
-
-            VehicleDropdown(
-                vehicles = vehicles,
-                selectedVehicleId = selectedVehicleId,
-                onVehicleSelected = onVehicleSelected
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
             )
-
-            selectedVehicle?.let {
-                Text(
-                    text = "${it.fuelType.label} / タンク容量 ${formatDouble(it.tankCapacity)} L",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            ReportRangeSelector(
-                selectedRange = selectedRange,
-                onRangeSelected = onRangeSelected
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
             )
-
-            DashboardSummaryCard(
-                title = graphMeta.title,
-                unit = graphMeta.unit,
-                accentColor = graphMeta.color,
-                latestValue = latestValue,
-                averageValue = avgValue,
-                maxValue = maxValue
-            )
-
-            ModernChartCard(
-                title = graphMeta.title,
-                xAxisLabel = "記録日",
-                yAxisLabel = graphMeta.unit,
-                accentColor = graphMeta.color
-            ) {
-                when (selectedGraphType) {
-                    ReportGraphType.TOTAL_COST -> {
-                        ModernBarChart(
-                            values = chartSeries.map { it.first },
-                            labels = chartSeries.map { it.second },
-                            valueSuffix = graphMeta.unit,
-                            accentColor = graphMeta.color
-                        )
-                    }
-                    else -> {
-                        ModernLineChart(
-                            values = chartSeries.map { it.first },
-                            labels = chartSeries.map { it.second },
-                            valueSuffix = graphMeta.unit,
-                            accentColor = graphMeta.color
-                        )
-                    }
-                }
-            }
         }
+    }
+}
 
-        GraphTypeSelectorBar(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
-            selectedGraphType = selectedGraphType,
-            onGraphTypeSelected = onGraphTypeSelected
-        )
+
+@Composable
+fun MiniStatChip(text: String, bgColor: androidx.compose.ui.graphics.Color) {
+    Surface(shape = RoundedCornerShape(12.dp), color = bgColor.copy(alpha = 0.8f)) {
+        Text(text, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
     }
 }
 
 @Composable
-fun ReportRangeSelector(
-    selectedRange: ReportRange,
-    onRangeSelected: (ReportRange) -> Unit
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        ReportRange.entries.forEach { range ->
-            TextButton(onClick = { onRangeSelected(range) }) {
-                Text(if (range == selectedRange) "● ${range.label}" else range.label)
-            }
-        }
+fun DataPill(emoji: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(emoji, style = MaterialTheme.typography.labelSmall)
+        Text(value, style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
     }
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
-fun AddScreen(
-    modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    selectedVehicleId: Int?,
-    onVehicleSelected: (Int) -> Unit,
-    previousRecord: FuelRecord?,
-    odometerText: String,
-    onOdometerChange: (String) -> Unit,
-    litersText: String,
-    onLitersChange: (String) -> Unit,
-    unitPriceText: String,
-    onUnitPriceChange: (String) -> Unit,
-    totalPriceText: String,
-    onTotalPriceChange: (String) -> Unit,
-    selectedDateMillis: Long,
-    onDateSelected: (Long) -> Unit,
-    isFullTank: Boolean,
-    onFullTankChange: (Boolean) -> Unit,
-    onSaveFuelRecord: () -> Unit
-) {
-    val selectedVehicle = vehicles.find { it.id == selectedVehicleId }
-
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        if (vehicles.isEmpty()) {
-            Text("車両が未登録です。設定 > 車両登録 から追加してください。")
-            return@Column
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "車両選択",
-                    style = MaterialTheme.typography.titleSmall
-                )
-
-                VehicleDropdown(
-                    vehicles = vehicles,
-                    selectedVehicleId = selectedVehicleId,
-                    onVehicleSelected = onVehicleSelected
-                )
-
-                selectedVehicle?.let {
-                    Text("油種: ${it.fuelType.label} / タンク容量: ${formatDouble(it.tankCapacity)} L")
-                }
-            }
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "給油記録追加",
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                var showDatePicker by remember { mutableStateOf(false) }
-                if (showDatePicker) {
-                    val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
-                    DatePickerDialog(
-                        onDismissRequest = { showDatePicker = false },
-                        confirmButton = {
-                            TextButton(onClick = {
-                                onDateSelected(datePickerState.selectedDateMillis ?: selectedDateMillis)
-                                showDatePicker = false
-                            }) { Text("OK") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showDatePicker = false }) { Text("キャンセル") }
-                        }
-                    ) {
-                        DatePicker(state = datePickerState)
-                    }
-                }
-
-                Button(
-                    onClick = { showDatePicker = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("給油日: ${formatDateOnly(selectedDateMillis)}")
-                }
-
-                OutlinedTextField(
-                    value = odometerText,
-                    onValueChange = {
-                        val v = sanitizeDecimalInput(it)
-                        onOdometerChange(v)
-                    },
-                    label = { Text("走行距離 (km)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    supportingText = {
-                        Text(
-                            text = "前回: ${previousRecord?.let { "${formatDouble(it.odometer)} km" } ?: "-"}",
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.End
-                        )
-                    }
-                )
-
-                OutlinedTextField(
-                    value = litersText,
-                    onValueChange = {
-                        val v = sanitizeDecimalInput(it)
-                        onLitersChange(v)
-                    },
-                    label = { Text("給油量 (L)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    supportingText = {
-                        Text(
-                            text = "前回: ${previousRecord?.let { "${formatDouble(it.liters)} L" } ?: "-"}",
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.End
-                        )
-                    }
-                )
-
-                OutlinedTextField(
-                    value = unitPriceText,
-                    onValueChange = {
-                        val v = sanitizeDecimalInput(it)
-                        onUnitPriceChange(v)
-                    },
-                    label = { Text("単価 (円/L)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    supportingText = {
-                        Text(
-                            text = "前回: ${
-                                previousRecord?.let {
-                                    "${String.format(Locale.JAPAN, "%.1f", it.unitPrice)} 円/L"
-                                } ?: "-"
-                            }",
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.End
-                        )
-                    }
-                )
-
-                OutlinedTextField(
-                    value = totalPriceText,
-                    onValueChange = {
-                        val v = sanitizeIntInput(it)
-                        onTotalPriceChange(v)
-                    },
-                    label = { Text("支払金額 (円)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    supportingText = {
-                        Text(
-                            text = "前回: ${previousRecord?.let { "${it.price} 円" } ?: "-"}",
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.End
-                        )
-                    }
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(
-                        checked = isFullTank,
-                        onCheckedChange = onFullTankChange
-                    )
-                    Text("満タン給油")
-                }
-
-                Button(
-                    onClick = onSaveFuelRecord,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("給油記録を保存")
-                }
-            }
-        }
+fun DetailRow(label: String, value: String) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
     }
 }
 
-@Composable
-fun SettingsTopScreen(
-    modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    backupMessage: String?,
-    onOpenVehicleManagement: () -> Unit,
-    onExportBackup: () -> Unit,
-    onImportBackup: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text("管理", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
 
-                Button(
-                    onClick = onOpenVehicleManagement,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("車両登録")
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = onExportBackup,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("バックアップ保存")
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = onImportBackup,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("バックアップ復元")
-                }
-
-                backupMessage?.let {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        if (vehicles.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Text("登録済み車両", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    vehicles.forEach { vehicle ->
-                        Text("・${vehicle.displayName} / ${vehicle.fuelType.label} / ${formatDouble(vehicle.tankCapacity)} L")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun VehicleManagementScreen(
-    modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    makerText: String,
-    onMakerChange: (String) -> Unit,
-    modelText: String,
-    onModelChange: (String) -> Unit,
-    tankCapacityText: String,
-    onTankCapacityChange: (String) -> Unit,
-    selectedFuelType: FuelType,
-    onFuelTypeSelected: (FuelType) -> Unit,
-    onAddVehicle: () -> Unit,
-    onUpdateVehicle: (Vehicle) -> Unit,
-    onDeleteVehicle: (Vehicle) -> Unit,
-    onBack: () -> Unit
-) {
-    var editVehicle by remember { mutableStateOf<Vehicle?>(null) }
-    var deleteVehicle by remember { mutableStateOf<Vehicle?>(null) }
-
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        TextButton(onClick = onBack) {
-            Text("← 設定へ戻る")
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("車両登録", style = MaterialTheme.typography.titleMedium)
-
-                OutlinedTextField(
-                    value = makerText,
-                    onValueChange = { onMakerChange(it.replace("\n", "").trimStart()) },
-                    label = { Text("メーカー") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = modelText,
-                    onValueChange = { onModelChange(it.replace("\n", "").trimStart()) },
-                    label = { Text("車種") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = tankCapacityText,
-                    onValueChange = { onTankCapacityChange(sanitizeDecimalInput(it)) },
-                    label = { Text("タンク容量 (L)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-                FuelTypeDropdown(
-                    selectedFuelType = selectedFuelType,
-                    onFuelTypeSelected = onFuelTypeSelected
-                )
-
-                Button(
-                    onClick = onAddVehicle,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("車両を追加")
-                }
-            }
-        }
-
-        if (vehicles.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("登録済み車両", style = MaterialTheme.typography.titleMedium)
-
-                    vehicles.forEach { vehicle ->
-                        HorizontalDivider()
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(vehicle.displayName, style = MaterialTheme.typography.titleSmall)
-                                Text("油種: ${vehicle.fuelType.label}")
-                                Text("タンク容量: ${formatDouble(vehicle.tankCapacity)} L")
-                            }
-
-                            Row {
-                                TextButton(onClick = { editVehicle = vehicle }) {
-                                    Text("編集")
-                                }
-                                TextButton(onClick = { deleteVehicle = vehicle }) {
-                                    Text("削除")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    editVehicle?.let { vehicle ->
-        VehicleEditDialog(
-            vehicle = vehicle,
-            onDismiss = { editVehicle = null },
-            onSave = {
-                onUpdateVehicle(it)
-                editVehicle = null
-            }
-        )
-    }
-
-    deleteVehicle?.let { vehicle ->
-        AlertDialog(
-            onDismissRequest = { deleteVehicle = null },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteVehicle(vehicle)
-                        deleteVehicle = null
-                    }
-                ) {
-                    Text("削除")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteVehicle = null }) {
-                    Text("キャンセル")
-                }
-            },
-            title = { Text("車両を削除") },
-            text = { Text("この車両と紐づく給油履歴を削除しますか？") }
-        )
-    }
-}
-
-fun filterFuelRecordsByRange(
-    records: List<FuelRecord>,
-    range: ReportRange
-): List<FuelRecord> {
-    val now = Instant.now().atZone(ZoneId.systemDefault())
-    val currentYear = now.year
-    val currentMonth = now.monthValue
-    val weekFields = WeekFields.of(Locale.JAPAN)
-    val currentWeek = now.get(weekFields.weekOfWeekBasedYear())
-
-    return records.filter { record ->
-        val dt = Instant.ofEpochMilli(record.timestamp).atZone(ZoneId.systemDefault())
-        when (range) {
-            ReportRange.TOTAL -> true
-            ReportRange.YEAR -> dt.year == currentYear
-            ReportRange.MONTH -> dt.year == currentYear && dt.monthValue == currentMonth
-            ReportRange.WEEK -> {
-                dt.year == currentYear &&
-                        dt.get(weekFields.weekOfWeekBasedYear()) == currentWeek
-            }
-        }
-    }
-}
 
 fun calculateFuelEfficiencyTextForVehicle(
     records: List<FuelRecord>,
@@ -1990,878 +1120,62 @@ fun FuelTypeDropdown(
 fun VehicleDropdown(
     vehicles: List<Vehicle>,
     selectedVehicleId: Int?,
-    onVehicleSelected: (Int) -> Unit
+    onVehicleSelected: (Int) -> Unit,
+    enabled: Boolean = true
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedVehicle = vehicles.find { it.id == selectedVehicleId }
 
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
-    ) {
-        OutlinedTextField(
-            value = selectedVehicle?.displayName ?: "",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("車両") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier
-                .menuAnchor()
-                .fillMaxWidth()
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
+    ExposedDropdownMenuBox(expanded = expanded && enabled, onExpandedChange = { if (enabled) expanded = !expanded }) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = if (enabled) MaterialTheme.colorScheme.surface
+                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+            ),
+            modifier = Modifier.fillMaxWidth().menuAnchor()
         ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("🚗", style = MaterialTheme.typography.titleMedium)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        selectedVehicle?.displayName ?: "車両を選択",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                        color = if (selectedVehicle != null) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    selectedVehicle?.let {
+                        Text("${it.fuelType.label} / ${formatDouble(it.tankCapacity)} L",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded)
+            }
+        }
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             vehicles.forEach { vehicle ->
                 DropdownMenuItem(
                     text = {
-                        Column {
-                            Text(vehicle.displayName)
-                            Text("${vehicle.fuelType.label} / ${formatDouble(vehicle.tankCapacity)} L")
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("🚗")
+                            Column {
+                                Text(vehicle.displayName, style = MaterialTheme.typography.bodyMedium)
+                                Text("${vehicle.fuelType.label} / ${formatDouble(vehicle.tankCapacity)} L",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     },
-                    onClick = {
-                        onVehicleSelected(vehicle.id)
-                        expanded = false
-                    }
+                    onClick = { onVehicleSelected(vehicle.id); expanded = false }
                 )
             }
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GraphTypeSelectorBar(
-    modifier: Modifier = Modifier,
-    selectedGraphType: ReportGraphType,
-    onGraphTypeSelected: (ReportGraphType) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Card(
-        modifier = modifier
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = !expanded }
-        ) {
-            OutlinedTextField(
-                value = selectedGraphType.label,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("グラフ選択") },
-                trailingIcon = {
-                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                },
-                modifier = Modifier
-                    .menuAnchor()
-                    .fillMaxWidth()
-                    .padding(12.dp)
-            )
-
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                ReportGraphType.entries.forEach { type ->
-                    DropdownMenuItem(
-                        text = { Text(type.label) },
-                        onClick = {
-                            onGraphTypeSelected(type)
-                            expanded = false
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun ModernLineChart(
-    values: List<Float>,
-    labels: List<String>,
-    valueSuffix: String,
-    accentColor: Color
-) {
-    if (values.isEmpty()) {
-        Text("データがありません。")
-        return
-    }
-
-    val maxValue = values.maxOrNull() ?: 0f
-    val minValue = values.minOrNull() ?: 0f
-    val axisColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
-    val ySteps = 4
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(300.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f))
-            .padding(10.dp)
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val chartWidth = size.width
-            val chartHeight = size.height
-
-            val leftPad = 86f
-            val rightPad = 20f
-            val topPad = 26f
-            val bottomPad = 56f
-
-            val usableWidth = chartWidth - leftPad - rightPad
-            val usableHeight = chartHeight - topPad - bottomPad
-
-            for (i in 0..ySteps) {
-                val ratio = i / ySteps.toFloat()
-                val y = topPad + usableHeight - usableHeight * ratio
-                val value = minValue + (maxValue - minValue) * ratio
-
-                drawLine(
-                    color = gridColor,
-                    start = Offset(leftPad, y),
-                    end = Offset(leftPad + usableWidth, y),
-                    strokeWidth = 1.5f
-                )
-
-                drawContext.canvas.nativeCanvas.drawText(
-                    formatChartValue(value, valueSuffix),
-                    8f,
-                    y + 10f,
-                    android.graphics.Paint().apply {
-                        color = textColor.toArgb()
-                        textSize = 26f
-                        isAntiAlias = true
-                    }
-                )
-            }
-
-            drawLine(
-                color = axisColor,
-                start = Offset(leftPad, topPad),
-                end = Offset(leftPad, topPad + usableHeight),
-                strokeWidth = 2.5f
-            )
-
-            drawLine(
-                color = axisColor,
-                start = Offset(leftPad, topPad + usableHeight),
-                end = Offset(leftPad + usableWidth, topPad + usableHeight),
-                strokeWidth = 2.5f
-            )
-
-            val range = (maxValue - minValue).takeIf { it > 0 } ?: 1f
-            val stepX = if (values.size > 1) usableWidth / (values.size - 1) else usableWidth / 2f
-            val path = Path()
-
-            values.forEachIndexed { index, value ->
-                val x = leftPad + stepX * index
-                val normalized = (value - minValue) / range
-                val y = topPad + usableHeight - normalized * usableHeight
-
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-
-                drawCircle(
-                    color = accentColor,
-                    radius = 7f,
-                    center = Offset(x, y)
-                )
-
-                if (index < labels.size) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        labels[index],
-                        x,
-                        topPad + usableHeight + 34f,
-                        android.graphics.Paint().apply {
-                            color = textColor.toArgb()
-                            textSize = 24f
-                            isAntiAlias = true
-                            textAlign = android.graphics.Paint.Align.CENTER
-                        }
-                    )
-                }
-            }
-
-            drawPath(
-                path = path,
-                color = accentColor,
-                style = Stroke(width = 4.5f)
-            )
-        }
-    }
-}
-
-@Composable
-fun ModernBarChart(
-    values: List<Float>,
-    labels: List<String>,
-    valueSuffix: String,
-    accentColor: Color
-) {
-    if (values.isEmpty()) {
-        Text("データがありません。")
-        return
-    }
-
-    val maxValue = values.maxOrNull() ?: 0f
-    val axisColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
-    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f)
-    val ySteps = 4
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(300.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f))
-            .padding(10.dp)
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val chartWidth = size.width
-            val chartHeight = size.height
-
-            val leftPad = 86f
-            val rightPad = 20f
-            val topPad = 26f
-            val bottomPad = 56f
-
-            val usableWidth = chartWidth - leftPad - rightPad
-            val usableHeight = chartHeight - topPad - bottomPad
-
-            for (i in 0..ySteps) {
-                val ratio = i / ySteps.toFloat()
-                val y = topPad + usableHeight - usableHeight * ratio
-                val value = maxValue * ratio
-
-                drawLine(
-                    color = gridColor,
-                    start = Offset(leftPad, y),
-                    end = Offset(leftPad + usableWidth, y),
-                    strokeWidth = 1.5f
-                )
-
-                drawContext.canvas.nativeCanvas.drawText(
-                    formatChartValue(value, valueSuffix),
-                    8f,
-                    y + 10f,
-                    android.graphics.Paint().apply {
-                        color = textColor.toArgb()
-                        textSize = 26f
-                        isAntiAlias = true
-                    }
-                )
-            }
-
-            drawLine(
-                color = axisColor,
-                start = Offset(leftPad, topPad),
-                end = Offset(leftPad, topPad + usableHeight),
-                strokeWidth = 2.5f
-            )
-
-            drawLine(
-                color = axisColor,
-                start = Offset(leftPad, topPad + usableHeight),
-                end = Offset(leftPad + usableWidth, topPad + usableHeight),
-                strokeWidth = 2.5f
-            )
-
-            val barArea = usableWidth / values.size
-            val barWidth = barArea * 0.58f
-
-            values.forEachIndexed { index, value ->
-                val x = leftPad + barArea * index + (barArea - barWidth) / 2f
-                val ratio = if (maxValue > 0) value / maxValue else 0f
-                val barHeight = usableHeight * ratio
-                val y = topPad + usableHeight - barHeight
-
-                drawRoundRect(
-                    color = accentColor,
-                    topLeft = Offset(x, y),
-                    size = Size(barWidth, barHeight),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(14f, 14f)
-                )
-
-                if (index < labels.size) {
-                    drawContext.canvas.nativeCanvas.drawText(
-                        labels[index],
-                        x + barWidth / 2f,
-                        topPad + usableHeight + 34f,
-                        android.graphics.Paint().apply {
-                            color = textColor.toArgb()
-                            textSize = 24f
-                            isAntiAlias = true
-                            textAlign = android.graphics.Paint.Align.CENTER
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-fun buildDistanceSeries(records: List<FuelRecord>): List<Pair<Double, String>> {
-    if (records.size < 2) return emptyList()
-
-    val sorted = records.sortedBy { it.timestamp }
-    val result = mutableListOf<Pair<Double, String>>()
-
-    for (i in 1 until sorted.size) {
-        val distance = sorted[i].odometer - sorted[i - 1].odometer
-        if (distance >= 0) {
-            result.add(distance to shortDate(sorted[i].timestamp))
-        }
-    }
-    return result
-}
-
-fun buildEfficiencySeries(records: List<FuelRecord>): List<Pair<Double, String>> {
-    val sorted = records.sortedBy { it.timestamp }
-    val result = mutableListOf<Pair<Double, String>>()
-
-    for (i in sorted.indices) {
-        val current = sorted[i]
-        if (!current.isFullTank) continue
-
-        for (j in i - 1 downTo 0) {
-            val previous = sorted[j]
-            if (previous.isFullTank) {
-                val distance = current.odometer - previous.odometer
-                if (distance > 0 && current.liters > 0) {
-                    result.add((distance / current.liters) to shortDate(current.timestamp))
-                }
-                break
-            }
-        }
-    }
-    return result
-}
-
-fun buildCumulativeCostSeries(records: List<FuelRecord>): List<Pair<Double, String>> {
-    val sorted = records.sortedBy { it.timestamp }
-    val result = mutableListOf<Pair<Double, String>>()
-    var sum = 0.0
-
-    sorted.forEach {
-        sum += it.price
-        result.add(sum to shortDate(it.timestamp))
-    }
-
-    return result
-}
-
-fun shortDate(timestamp: Long): String {
-    return SimpleDateFormat("M/d", Locale.JAPAN).format(Date(timestamp))
-}
-
-fun formatChartValue(value: Float, suffix: String): String {
-    return when (suffix) {
-        "円" -> "${value.toInt()} $suffix"
-        else -> "${String.format(Locale.JAPAN, "%.1f", value)} $suffix"
-    }
-}
-
-@Composable
-fun DashboardSummaryCard(
-    title: String,
-    unit: String,
-    accentColor: Color,
-    latestValue: Float?,
-    averageValue: Float?,
-    maxValue: Float?
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        tonalElevation = 2.dp,
-        shadowElevation = 6.dp,
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(
-                                accentColor.copy(alpha = 0.95f),
-                                accentColor.copy(alpha = 0.72f)
-                            )
-                        )
-                    )
-                    .padding(18.dp)
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "縦軸: $unit / 横軸: 記録日",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.92f)
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                SummaryChip(
-                    modifier = Modifier.weight(1f),
-                    label = "最新値",
-                    value = latestValue?.let { formatChartValue(it, unit) } ?: "-"
-                )
-                SummaryChip(
-                    modifier = Modifier.weight(1f),
-                    label = "平均値",
-                    value = averageValue?.let { formatChartValue(it, unit) } ?: "-"
-                )
-                SummaryChip(
-                    modifier = Modifier.weight(1f),
-                    label = "最大値",
-                    value = maxValue?.let { formatChartValue(it, unit) } ?: "-"
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SummaryChip(
-    modifier: Modifier = Modifier,
-    label: String,
-    value: String
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-fun ModernChartCard(
-    title: String,
-    xAxisLabel: String,
-    yAxisLabel: String,
-    accentColor: Color,
-    content: @Composable () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        tonalElevation = 2.dp,
-        shadowElevation = 6.dp,
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(14.dp)
-                        .clip(RoundedCornerShape(99.dp))
-                        .background(accentColor)
-                )
-                Column {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "横軸: $xAxisLabel / 縦軸: $yAxisLabel",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            content()
-        }
-    }
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
-fun MaintenanceRecordEditDialog(
-    record: MaintenanceRecord,
-    onDismiss: () -> Unit,
-    onSave: (MaintenanceRecord) -> Unit,
-    onDelete: (MaintenanceRecord) -> Unit
-) {
-    var selectedDateMillis by remember { mutableStateOf(record.timestamp) }
-    var odometerText by remember { mutableStateOf(formatDouble(record.odometer)) }
-
-    var carWashDone by remember { mutableStateOf(record.carWashDone) }
-    var engineOilDone by remember { mutableStateOf(record.engineOilDone) }
-    var oilElementDone by remember { mutableStateOf(record.oilElementDone) }
-    var wiperDone by remember { mutableStateOf(record.wiperDone) }
-    var tireDone by remember { mutableStateOf(record.tireDone) }
-    var airCleanerCleaningDone by remember { mutableStateOf(record.airCleanerCleaningDone) }
-    var airCleanerReplacementDone by remember { mutableStateOf(record.airCleanerReplacementDone) }
-
-    var showDatePicker by remember { mutableStateOf(false) }
-    var errorText by remember { mutableStateOf<String?>(null) }
-
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(
-            initialSelectedDateMillis = selectedDateMillis
-        )
-
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        selectedDateMillis =
-                            datePickerState.selectedDateMillis ?: selectedDateMillis
-                        showDatePicker = false
-                    }
-                ) {
-                    Text("OK")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text("キャンセル")
-                }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val odometer = odometerText.toDoubleOrNull()
-
-                    if (odometer == null) {
-                        errorText = "走行距離を確認してください"
-                        return@TextButton
-                    }
-
-                    onSave(
-                        record.copy(
-                            timestamp = selectedDateMillis,
-                            odometer = odometer,
-                            carWashDone = carWashDone,
-                            engineOilDone = engineOilDone,
-                            oilElementDone = oilElementDone,
-                            wiperDone = wiperDone,
-                            tireDone = tireDone,
-                            airCleanerCleaningDone = airCleanerCleaningDone,
-                            airCleanerReplacementDone = airCleanerReplacementDone
-                        )
-                    )
-                }
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = { onDelete(record) }) {
-                    Text("削除")
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("キャンセル")
-                }
-            }
-        },
-        title = { Text("整備記録を編集") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { showDatePicker = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("日付: ${formatDateOnly(selectedDateMillis)}")
-                }
-
-                OutlinedTextField(
-                    value = odometerText,
-                    onValueChange = { odometerText = sanitizeDecimalInput(it) },
-                    label = { Text("走行距離 (km)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                CheckboxRow("洗車", carWashDone) { carWashDone = it }
-                CheckboxRow("エンジンオイル交換", engineOilDone) { engineOilDone = it }
-                CheckboxRow("エレメント交換", oilElementDone) { oilElementDone = it }
-                CheckboxRow("ワイパー交換", wiperDone) { wiperDone = it }
-                CheckboxRow("タイヤ交換", tireDone) { tireDone = it }
-                CheckboxRow("エアクリーナ清掃", airCleanerCleaningDone) { airCleanerCleaningDone = it }
-                CheckboxRow("エアクリーナ交換", airCleanerReplacementDone) { airCleanerReplacementDone = it }
-
-                errorText?.let {
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-            }
-        }
-    )
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3Api::class)
-fun FuelRecordEditDialog(
-    record: FuelRecord,
-    onDismiss: () -> Unit,
-    onSave: (FuelRecord) -> Unit,
-    onDelete: (FuelRecord) -> Unit
-) {
-    var selectedDateMillis by remember { mutableStateOf(record.timestamp) }
-    var timeText by remember { mutableStateOf(formatTimeOnly(record.timestamp)) }
-    var odometerText by remember { mutableStateOf(formatDouble(record.odometer)) }
-    var litersText by remember { mutableStateOf(formatDouble(record.liters)) }
-    var unitPriceText by remember {
-        mutableStateOf(String.format(Locale.JAPAN, "%.1f", record.unitPrice))
-    }
-    var totalPriceText by remember { mutableStateOf(record.price.toString()) }
-    var isFullTank by remember { mutableStateOf(record.isFullTank) }
-    var errorText by remember { mutableStateOf<String?>(null) }
-    var showDatePicker by remember { mutableStateOf(false) }
-
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = selectedDateMillis)
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    selectedDateMillis = datePickerState.selectedDateMillis ?: selectedDateMillis
-                    showDatePicker = false
-                }) { Text("OK") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("キャンセル") }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val timestamp = parseDateTimeToTimestamp(
-                        formatDateOnly(selectedDateMillis),
-                        timeText
-                    )
-                    val odometer = odometerText.toDoubleOrNull()
-                    val liters = litersText.toDoubleOrNull()
-                    val unitPrice = unitPriceText.toDoubleOrNull()
-                    val totalPrice = totalPriceText.toIntOrNull()
-
-                    when {
-                        timestamp == null -> {
-                            errorText = "日付または時刻の形式が正しくありません"
-                        }
-                        odometer == null || liters == null || unitPrice == null || totalPrice == null -> {
-                            errorText = "入力内容を確認してください"
-                        }
-                        else -> {
-                            errorText = null
-                            onSave(
-                                record.copy(
-                                    timestamp = timestamp,
-                                    odometer = odometer,
-                                    liters = liters,
-                                    unitPrice = unitPrice,
-                                    price = totalPrice,
-                                    isFullTank = isFullTank
-                                )
-                            )
-                        }
-                    }
-                }
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            Row {
-                TextButton(onClick = { onDelete(record) }) {
-                    Text("削除")
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("キャンセル")
-                }
-            }
-        },
-        title = { Text("給油記録を編集") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = { showDatePicker = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("日付: ${formatDateOnly(selectedDateMillis)}")
-                }
-
-                OutlinedTextField(
-                    value = timeText,
-                    onValueChange = { timeText = sanitizeTimeInput(it) },
-                    label = { Text("時刻 (HH:mm)") },
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = odometerText,
-                    onValueChange = { odometerText = sanitizeDecimalInput(it) },
-                    label = { Text("走行距離 (km)") },
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = litersText,
-                    onValueChange = { litersText = sanitizeDecimalInput(it) },
-                    label = { Text("給油量 (L)") },
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = unitPriceText,
-                    onValueChange = { unitPriceText = sanitizeDecimalInput(it) },
-                    label = { Text("単価 (円/L)") },
-                    singleLine = true
-                )
-
-                OutlinedTextField(
-                    value = totalPriceText,
-                    onValueChange = { totalPriceText = sanitizeIntInput(it) },
-                    label = { Text("支払金額 (yen)") },
-                    singleLine = true
-                )
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(
-                        checked = isFullTank,
-                        onCheckedChange = { isFullTank = it }
-                    )
-                    Text("満タン給油")
-                }
-
-                errorText?.let {
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-        }
-    )
-}
-
-@Composable
-fun VehicleEditDialog(
-    vehicle: Vehicle,
-    onDismiss: () -> Unit,
-    onSave: (Vehicle) -> Unit
-) {
-    var makerText by remember { mutableStateOf(vehicle.maker) }
-    var modelText by remember { mutableStateOf(vehicle.model) }
-    var tankCapacityText by remember { mutableStateOf(formatDouble(vehicle.tankCapacity)) }
-    var fuelType by remember { mutableStateOf(vehicle.fuelType) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val tank = tankCapacityText.toDoubleOrNull()
-                    if (makerText.isNotBlank() && modelText.isNotBlank() && tank != null) {
-                        onSave(
-                            vehicle.copy(
-                                maker = makerText.trim(),
-                                model = modelText.trim(),
-                                tankCapacity = tank,
-                                fuelType = fuelType
-                            )
-                        )
-                    }
-                }
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("キャンセル")
-            }
-        },
-        title = { Text("車両を編集") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = makerText,
-                    onValueChange = { makerText = it.replace("\n", "").trimStart() },
-                    label = { Text("メーカー") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = modelText,
-                    onValueChange = { modelText = it.replace("\n", "").trimStart() },
-                    label = { Text("車種") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = tankCapacityText,
-                    onValueChange = { tankCapacityText = sanitizeDecimalInput(it) },
-                    label = { Text("タンク容量 (L)") },
-                    singleLine = true
-                )
-                FuelTypeDropdown(
-                    selectedFuelType = fuelType,
-                    onFuelTypeSelected = { fuelType = it }
-                )
-            }
-        }
-    )
 }

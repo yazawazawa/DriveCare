@@ -26,6 +26,12 @@ class DriveCareRepository(
 
     suspend fun updateFuelRecord(record: FuelRecord) = dao.updateFuelRecord(record)
     suspend fun deleteFuelRecord(record: FuelRecord) = dao.deleteFuelRecord(record)
+    suspend fun updateMaintenanceRecord(record: MaintenanceRecord) =
+        dao.updateMaintenanceRecord(record)
+
+    suspend fun deleteMaintenanceRecord(record: MaintenanceRecord) =
+        dao.deleteMaintenanceRecord(record)
+
     suspend fun insertMaintenanceRecord(record: MaintenanceRecord): Long = dao.insertMaintenanceRecord(record)
 
 

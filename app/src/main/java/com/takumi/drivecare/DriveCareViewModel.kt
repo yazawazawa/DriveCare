@@ -1,6 +1,8 @@
 package com.takumi.drivecare
 
 import android.content.Context
+import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -9,13 +11,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+private const val TAG = "DriveCareViewModel"
+
 data class DriveCareUiState(
     val vehicles: List<Vehicle> = emptyList(),
     val fuelRecords: List<FuelRecord> = emptyList(),
     val maintenanceRecords: List<MaintenanceRecord> = emptyList(),
     val selectedVehicleId: Int? = null,
     val lastUsedVehicleId: Int? = null,
-    val reportRange: ReportRange = ReportRange.TOTAL
+    val reportRange: ReportRange = ReportRange.TOTAL,
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
 )
 
 class DriveCareViewModel(
@@ -27,11 +33,36 @@ class DriveCareViewModel(
 
     init {
         viewModelScope.launch {
-            reload()
+            safeReload()
         }
     }
 
-    suspend fun reload() {
+    // ── エラー管理 ────────────────────────────────────────────────────
+
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(errorMessage = null)
+    }
+
+    // ── 内部ヘルパー ─────────────────────────────────────────────────
+
+    private fun launchSafe(action: suspend () -> Unit) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            try {
+                action()
+            } catch (e: Exception) {
+                Log.e(TAG, "DB operation failed", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "エラーが発生しました。再度お試しください。\n(${e.localizedMessage})"
+                )
+                return@launch
+            }
+            _uiState.value = _uiState.value.copy(isLoading = false)
+        }
+    }
+
+    private suspend fun safeReload() {
         val vehicles = repository.getAllVehicles()
         val records = repository.getAllFuelRecords()
         val maintenanceRecords = repository.getAllMaintenanceRecords()
@@ -45,32 +76,45 @@ class DriveCareViewModel(
             vehicles = vehicles,
             fuelRecords = records,
             maintenanceRecords = maintenanceRecords,
-            selectedVehicleId = selectedVehicleId
+            selectedVehicleId = selectedVehicleId,
+            isLoading = false
         )
     }
 
+    // ── 公開 API ─────────────────────────────────────────────────────
+
     fun selectVehicle(vehicleId: Int) {
-        _uiState.value = _uiState.value.copy(selectedVehicleId = vehicleId)
+        _uiState.value = _uiState.value.copy(
+            selectedVehicleId = vehicleId,
+            lastUsedVehicleId = vehicleId
+        )
+    }
+
+    /**
+     * アプリ起動時に SharedPreferences から復元した vehicleId を反映する。
+     * 車両リストが未ロードの場合は lastUsedVehicleId にセットし、
+     * safeReload() 完了後に selectedVehicleId へフォールバックされる。
+     */
+    fun restoreLastVehicle(vehicleId: Int) {
+        val current = _uiState.value
+        // vehicles がすでにロード済みなら ID が存在するか確認してセット
+        val exists = current.vehicles.isEmpty() || current.vehicles.any { it.id == vehicleId }
+        if (exists) {
+            _uiState.value = current.copy(
+                selectedVehicleId = vehicleId,
+                lastUsedVehicleId = vehicleId
+            )
+        }
     }
 
     fun setReportRange(range: ReportRange) {
         _uiState.value = _uiState.value.copy(reportRange = range)
     }
 
-    fun addVehicle(
-        maker: String,
-        model: String,
-        tankCapacity: Double,
-        fuelType: FuelType
-    ) {
-        viewModelScope.launch {
+    fun addVehicle(maker: String, model: String, tankCapacity: Double, fuelType: FuelType) {
+        launchSafe {
             val newId = repository.insertVehicle(
-                Vehicle(
-                    maker = maker,
-                    model = model,
-                    tankCapacity = tankCapacity,
-                    fuelType = fuelType
-                )
+                Vehicle(maker = maker, model = model, tankCapacity = tankCapacity, fuelType = fuelType)
             ).toInt()
 
             val vehicles = repository.getAllVehicles()
@@ -88,14 +132,14 @@ class DriveCareViewModel(
     }
 
     fun updateVehicle(vehicle: Vehicle) {
-        viewModelScope.launch {
+        launchSafe {
             repository.updateVehicle(vehicle)
-            reload()
+            safeReload()
         }
     }
 
     fun deleteVehicle(vehicle: Vehicle) {
-        viewModelScope.launch {
+        launchSafe {
             repository.deleteVehicle(vehicle)
             val vehicles = repository.getAllVehicles()
             val nextSelected = vehicles.lastOrNull()?.id
@@ -118,7 +162,7 @@ class DriveCareViewModel(
         isFullTank: Boolean,
         timestamp: Long = System.currentTimeMillis()
     ) {
-        viewModelScope.launch {
+        launchSafe {
             repository.insertFuelRecord(
                 FuelRecord(
                     vehicleId = vehicleId,
@@ -130,7 +174,6 @@ class DriveCareViewModel(
                     timestamp = timestamp
                 )
             )
-
             val records = repository.getAllFuelRecords()
             _uiState.value = _uiState.value.copy(
                 fuelRecords = records,
@@ -141,31 +184,32 @@ class DriveCareViewModel(
     }
 
     fun updateFuelRecord(record: FuelRecord) {
-        viewModelScope.launch {
+        launchSafe {
             repository.updateFuelRecord(record)
-            reload()
+            safeReload()
         }
     }
 
     fun deleteFuelRecord(record: FuelRecord) {
-        viewModelScope.launch {
+        launchSafe {
             repository.deleteFuelRecord(record)
-            reload()
+            safeReload()
         }
     }
 
-    fun exportBackup(context: Context, onDone: (String) -> Unit) {
-        viewModelScope.launch {
-            val file = BackupUtils.exportToLocalFile(
-                context = context,
-                vehicles = _uiState.value.vehicles,
-                fuelRecords = _uiState.value.fuelRecords,
-                maintenanceRecords = _uiState.value.maintenanceRecords
-            )
-            onDone(file.absolutePath)
+    fun updateMaintenanceRecord(record: MaintenanceRecord) {
+        launchSafe {
+            repository.updateMaintenanceRecord(record)
+            safeReload()
         }
     }
 
+    fun deleteMaintenanceRecord(record: MaintenanceRecord) {
+        launchSafe {
+            repository.deleteMaintenanceRecord(record)
+            safeReload()
+        }
+    }
 
     fun addMaintenanceRecord(
         vehicleId: Int,
@@ -177,9 +221,11 @@ class DriveCareViewModel(
         wiperDone: Boolean,
         tireDone: Boolean,
         airCleanerCleaningDone: Boolean,
-        airCleanerReplacementDone: Boolean
+        airCleanerReplacementDone: Boolean,
+        comment: String = "",
+        customItemsDone: String = ""
     ) {
-        viewModelScope.launch {
+        launchSafe {
             repository.insertMaintenanceRecord(
                 MaintenanceRecord(
                     vehicleId = vehicleId,
@@ -191,66 +237,123 @@ class DriveCareViewModel(
                     wiperDone = wiperDone,
                     tireDone = tireDone,
                     airCleanerCleaningDone = airCleanerCleaningDone,
-                    airCleanerReplacementDone = airCleanerReplacementDone
-
+                    airCleanerReplacementDone = airCleanerReplacementDone,
+                    comment = comment,
+                    customItemsDone = customItemsDone
                 )
             )
-            reload()
+            safeReload()
         }
     }
 
+    fun exportBackup(context: Context, onDone: (Result<String>) -> Unit) {
+        launchSafe {
+            try {
+                val file = BackupUtils.exportToLocalFile(
+                    context = context,
+                    vehicles = _uiState.value.vehicles,
+                    fuelRecords = _uiState.value.fuelRecords,
+                    maintenanceRecords = _uiState.value.maintenanceRecords
+                )
+                BackupUtils.shareBackupFile(context, file)
+                onDone(Result.success(file.absolutePath))
+            } catch (e: Exception) {
+                Log.e(TAG, "Export failed", e)
+                onDone(Result.failure(e))
+            }
+        }
+    }
+
+    /** バックアップをデバイスの外部ストレージ（Documents）に保存する */
+    fun saveBackupToDevice(context: Context, onDone: (Result<String>) -> Unit) {
+        launchSafe {
+            try {
+                val file = BackupUtils.saveToExternalStorage(
+                    context = context,
+                    vehicles = _uiState.value.vehicles,
+                    fuelRecords = _uiState.value.fuelRecords,
+                    maintenanceRecords = _uiState.value.maintenanceRecords
+                )
+                if (file != null) {
+                    onDone(Result.success(file.name))
+                } else {
+                    onDone(Result.failure(Exception("保存先を取得できませんでした")))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Save to device failed", e)
+                onDone(Result.failure(e))
+            }
+        }
+    }
+
+    /** 同端末の固定パスからバックアップを復元する */
     fun importBackup(context: Context, onDone: (Boolean) -> Unit) {
-        viewModelScope.launch {
+        launchSafe {
             val backup = BackupUtils.importFromLocalFile(context)
             if (backup == null) {
                 onDone(false)
-                return@launch
+                return@launchSafe
             }
-
-            val vehicles = backup.vehicles.map {
-                Vehicle(
-                    id = it.id,
-                    maker = it.maker,
-                    model = it.model,
-                    tankCapacity = it.tankCapacity,
-                    fuelType = FuelType.valueOf(it.fuelType)
-                )
-            }
-
-            val fuelRecords = backup.fuelRecords.map {
-                FuelRecord(
-                    id = it.id,
-                    vehicleId = it.vehicleId,
-                    odometer = it.odometer,
-                    liters = it.liters,
-                    price = it.price,
-                    unitPrice = it.unitPrice,
-                    isFullTank = it.isFullTank,
-                    timestamp = it.timestamp
-                )
-            }
-
-            val maintenanceRecords = backup.maintenanceRecords.map {
-                MaintenanceRecord(
-                    id = it.id,
-                    vehicleId = it.vehicleId,
-                    timestamp = it.timestamp,
-                    odometer = it.odometer,
-                    carWashDone = it.carWashDone,
-                    engineOilDone = it.engineOilDone,
-                    oilElementDone = it.oilElementDone,
-                    wiperDone = it.wiperDone,
-                    tireDone = it.tireDone,
-                    airCleanerCleaningDone = it.airCleanerCleaningDone,
-                    airCleanerReplacementDone = it.airCleanerReplacementDone
-
-                )
-            }
-
-            repository.replaceAllData(vehicles, fuelRecords, maintenanceRecords)
-            reload()
+            applyBackupData(backup)
             onDone(true)
         }
+    }
+
+    /** ファイルピッカーで選択した URI からバックアップを読み込む（他端末共有対応） */
+    fun importBackupFromUri(context: Context, uri: Uri, onDone: (Boolean) -> Unit) {
+        launchSafe {
+            val backup = BackupUtils.importFromUri(context, uri)
+            if (backup == null) {
+                onDone(false)
+                return@launchSafe
+            }
+            applyBackupData(backup)
+            onDone(true)
+        }
+    }
+
+    /** BackupData を DB に反映して画面を更新する共通処理 */
+    private suspend fun applyBackupData(backup: BackupData) {
+        val vehicles = backup.vehicles.map {
+            Vehicle(
+                id = it.id,
+                maker = it.maker,
+                model = it.model,
+                tankCapacity = it.tankCapacity,
+                fuelType = FuelType.valueOf(it.fuelType)
+            )
+        }
+        val fuelRecords = backup.fuelRecords.map {
+            FuelRecord(
+                id = it.id,
+                vehicleId = it.vehicleId,
+                odometer = it.odometer,
+                liters = it.liters,
+                price = it.price,
+                unitPrice = it.unitPrice,
+                isFullTank = it.isFullTank,
+                timestamp = it.timestamp
+            )
+        }
+        val maintenanceRecords = backup.maintenanceRecords.map {
+            MaintenanceRecord(
+                id = it.id,
+                vehicleId = it.vehicleId,
+                timestamp = it.timestamp,
+                odometer = it.odometer,
+                carWashDone = it.carWashDone,
+                engineOilDone = it.engineOilDone,
+                oilElementDone = it.oilElementDone,
+                wiperDone = it.wiperDone,
+                tireDone = it.tireDone,
+                airCleanerCleaningDone = it.airCleanerCleaningDone,
+                airCleanerReplacementDone = it.airCleanerReplacementDone,
+                comment = it.comment,
+                customItemsDone = it.customItemsDone
+            )
+        }
+        repository.replaceAllData(vehicles, fuelRecords, maintenanceRecords)
+        safeReload()
     }
 }
 

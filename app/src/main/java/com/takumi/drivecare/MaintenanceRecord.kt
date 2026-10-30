@@ -15,6 +15,7 @@ data class MaintenanceRecord(
     val wiperDone: Boolean,
     val tireDone: Boolean,
     val airCleanerCleaningDone: Boolean,
-    val airCleanerReplacementDone: Boolean
-
+    val airCleanerReplacementDone: Boolean,
+    val comment: String = "",           // v4: コメント欄
+    val customItemsDone: String = ""    // v4: カスタム項目チェック状態 JSON ("id1,id2,...")
 )
