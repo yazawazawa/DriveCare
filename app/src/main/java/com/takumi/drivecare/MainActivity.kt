@@ -422,7 +422,10 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
         )
     }
 
-    fun doSaveFuel() {
+    // 走行距離の入力ミスが疑われるときの確認メッセージ（null なら非表示）
+    var pendingOdometerWarning by remember { mutableStateOf<String?>(null) }
+
+    fun doSaveFuel(skipOdometerCheck: Boolean = false) {
         keyboardController?.hide()
         focusManager.clearFocus()
         val vehicleId = uiState.selectedVehicleId
@@ -450,6 +453,18 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
             showSaveError("支払金額を入力してください")
             return
         }
+        if (!skipOdometerCheck) {
+            val warning = checkOdometerInput(
+                records = uiState.fuelRecords.filter { it.vehicleId == vehicleId },
+                timestamp = selectedFuelDateMillis,
+                odometer = odometer,
+                tankCapacity = uiState.vehicles.find { it.id == vehicleId }?.tankCapacity
+            )
+            if (warning != null) {
+                pendingOdometerWarning = warning
+                return
+            }
+        }
         viewModel.addFuelRecord(
             vehicleId = vehicleId,
             odometer = odometer,
@@ -462,6 +477,23 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
         odometerText = ""; litersText = ""; unitPriceText = ""; totalPriceText = ""
         isFullTank = true
         selectedTab = BottomTab.HISTORY
+    }
+
+    pendingOdometerWarning?.let { warning ->
+        AlertDialog(
+            onDismissRequest = { pendingOdometerWarning = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingOdometerWarning = null
+                    doSaveFuel(skipOdometerCheck = true)
+                }) { Text("このまま保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingOdometerWarning = null }) { Text("修正する") }
+            },
+            title = { Text("走行距離を確認してください") },
+            text = { Text(warning) }
+        )
     }
 
     Scaffold(
@@ -912,36 +944,34 @@ fun DetailRow(label: String, value: String) {
 
 fun calculateFuelEfficiencyTextForVehicle(
     records: List<FuelRecord>,
-    currentRecord: FuelRecord
+    currentRecord: FuelRecord,
+    entries: List<FuelEfficiencyEntry> = calculateFuelEfficiencyEntries(records)
 ): String {
     if (!currentRecord.isFullTank) return "計算対象外"
+    entries.find { it.record.id == currentRecord.id }?.let { return formatFuelEfficiency(it.kmPerLiter) }
+
     val sortedAsc = records.sortedBy { it.timestamp }
     val currentIndex = sortedAsc.indexOfFirst { it.id == currentRecord.id }
-    if (currentIndex <= 0) return "前回満タン記録なし"
+    val hasPreviousFull = currentIndex > 0 && (0 until currentIndex).any { sortedAsc[it].isFullTank }
+    return if (hasPreviousFull) "計算不可" else "前回満タン記録なし"
+}
 
-    for (i in currentIndex - 1 downTo 0) {
-        val previous = sortedAsc[i]
-        if (previous.isFullTank) {
-            val distance = currentRecord.odometer - previous.odometer
-            if (distance > 0 && currentRecord.liters > 0) {
-                return String.format(Locale.JAPAN, "%.2f km/L", distance / currentRecord.liters)
-            }
-            return "計算不可"
-        }
-    }
-    return "前回満タン記録なし"
+/** 直前の記録からの走行距離（km）。前回記録がなければ null。マイナスなら入力ミスの可能性あり。 */
+fun distanceFromPreviousForVehicle(
+    records: List<FuelRecord>,
+    currentRecord: FuelRecord
+): Double? {
+    val sortedAsc = records.sortedBy { it.timestamp }
+    val currentIndex = sortedAsc.indexOfFirst { it.id == currentRecord.id }
+    if (currentIndex <= 0) return null
+    return currentRecord.odometer - sortedAsc[currentIndex - 1].odometer
 }
 
 fun calculateDistanceFromPreviousForVehicle(
     records: List<FuelRecord>,
     currentRecord: FuelRecord
 ): String {
-    val sortedAsc = records.sortedBy { it.timestamp }
-    val currentIndex = sortedAsc.indexOfFirst { it.id == currentRecord.id }
-    if (currentIndex <= 0) return "前回記録なし"
-
-    val previous = sortedAsc[currentIndex - 1]
-    val distance = currentRecord.odometer - previous.odometer
+    val distance = distanceFromPreviousForVehicle(records, currentRecord) ?: return "前回記録なし"
     return if (distance >= 0) "${formatDouble(distance)} km" else "計算不可"
 }
 
@@ -949,57 +979,19 @@ fun calculateAverageFuelEfficiencyAllVehicles(
     vehicles: List<Vehicle>,
     fuelRecords: List<FuelRecord>
 ): String {
-    val efficiencies = mutableListOf<Double>()
-
-    vehicles.forEach { vehicle ->
-        val records = fuelRecords
-            .filter { it.vehicleId == vehicle.id }
-            .sortedBy { it.timestamp }
-
-        for (i in records.indices) {
-            val current = records[i]
-            if (!current.isFullTank) continue
-            for (j in i - 1 downTo 0) {
-                val previous = records[j]
-                if (previous.isFullTank) {
-                    val distance = current.odometer - previous.odometer
-                    if (distance > 0 && current.liters > 0) {
-                        efficiencies.add(distance / current.liters)
-                    }
-                    break
-                }
-            }
-        }
-    }
-
+    val vehicleIds = vehicles.map { it.id }.toSet()
+    val efficiencies = calculateFuelEfficiencyEntriesMultiVehicle(fuelRecords.filter { it.vehicleId in vehicleIds })
+        .map { it.kmPerLiter }
     if (efficiencies.isEmpty()) return "データ不足"
-    return String.format(Locale.JAPAN, "%.2f km/L", efficiencies.average())
+    return formatFuelEfficiency(efficiencies.average())
 }
 
 fun calculateAverageFuelEfficiencyForVehicle(
     records: List<FuelRecord>
 ): String {
-    val sorted = records.sortedBy { it.timestamp }
-    val efficiencies = mutableListOf<Double>()
-
-    for (i in sorted.indices) {
-        val current = sorted[i]
-        if (!current.isFullTank) continue
-
-        for (j in i - 1 downTo 0) {
-            val previous = sorted[j]
-            if (previous.isFullTank) {
-                val distance = current.odometer - previous.odometer
-                if (distance > 0 && current.liters > 0) {
-                    efficiencies.add(distance / current.liters)
-                }
-                break
-            }
-        }
-    }
-
+    val efficiencies = calculateFuelEfficiencyEntries(records).map { it.kmPerLiter }
     if (efficiencies.isEmpty()) return "データ不足"
-    return String.format(Locale.JAPAN, "%.2f km/L", efficiencies.average())
+    return formatFuelEfficiency(efficiencies.average())
 }
 
 fun formatDouble(value: Double): String {

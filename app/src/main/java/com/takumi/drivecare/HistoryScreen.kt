@@ -414,9 +414,13 @@ fun HistoryScreen(
             // ─── タイムライン ────────────────────────────────────────────
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val efficiencyEntries = remember(records) { calculateFuelEfficiencyEntries(records) }
                 records.forEachIndexed { index, record ->
+                    val distanceValue = distanceFromPreviousForVehicle(records, record)
                     val distance = calculateDistanceFromPreviousForVehicle(records, record)
-                    val efficiency = calculateFuelEfficiencyTextForVehicle(records, record)
+                    val efficiency = calculateFuelEfficiencyTextForVehicle(records, record, efficiencyEntries)
+                    // 走行距離が前回より小さい = 入力ミスの可能性が高いので警告を出す
+                    val odometerDecreased = distanceValue != null && distanceValue < 0
                     // 関数が返す「無効」文字列を除外して表示判定
                     val showDistance = distance != "前回記録なし" && distance != "計算不可"
                     val showEfficiency = efficiency != "計算対象外" && efficiency != "前回満タン記録なし" && efficiency != "計算不可"
@@ -485,7 +489,7 @@ fun HistoryScreen(
                                     }
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    DataPill("💧", "${formatDouble(record.liters)}L")
+                                    DataPill("💧", "${formatLiters(record.liters)}L")
                                     DataPill("💴", "${record.price}円")
                                     DataPill("📍", "${String.format(Locale.JAPAN, "%.1f", record.unitPrice)}円/L")
                                 }
@@ -494,6 +498,13 @@ fun HistoryScreen(
                                         DataPill("🛣️", distance)
                                         if (showEfficiency) DataPill("⚡", efficiency)
                                     }
+                                }
+                                if (odometerDecreased) {
+                                    Text(
+                                        "⚠️ 走行距離が前回より小さいため燃費を計算できません。走行距離を確認してください",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
                                 }
                             }
                         }
@@ -519,7 +530,7 @@ fun HistoryScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DetailRow("走行距離", "${formatDouble(rec.odometer)} km")
-                    DetailRow("給油量", "${formatDouble(rec.liters)} L")
+                    DetailRow("給油量", "${formatLiters(rec.liters)} L")
                     DetailRow("単価", "${String.format(Locale.JAPAN, "%.1f", rec.unitPrice)} 円/L")
                     DetailRow("支払金額", "${rec.price} 円")
                     DetailRow("満タン", if (rec.isFullTank) "✅ はい" else "❌ いいえ")
@@ -532,6 +543,8 @@ fun HistoryScreen(
     editRecord?.let { rec ->
         FuelRecordEditDialog(
             record = rec,
+            vehicleRecords = records,
+            tankCapacity = selectedVehicle?.tankCapacity,
             onDismiss = { editRecord = null },
             onSave = { updated -> onUpdateFuelRecord(updated); editRecord = null },
             onDelete = { onDeleteFuelRecord(it); editRecord = null }

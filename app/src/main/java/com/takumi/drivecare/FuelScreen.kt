@@ -910,7 +910,7 @@ fun AddScreen(
                         label = "給油量 (L)",
                         value = litersText,
                         onValueChange = { onLitersChange(sanitizeDecimalInput(it)) },
-                        hint = previousRecord?.let { "前回 ${formatDouble(it.liters)} L" } ?: "-",
+                        hint = previousRecord?.let { "前回 ${formatLiters(it.liters)} L" } ?: "-",
                         keyboardType = KeyboardType.Decimal
                     )
 
@@ -973,7 +973,7 @@ fun AddScreen(
                             Text("前回の記録", style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
                             Text(
-                                "${formatDateOnly(prev.timestamp)}  ${formatDouble(prev.liters)} L  ${prev.price} 円",
+                                "${formatDateOnly(prev.timestamp)}  ${formatLiters(prev.liters)} L  ${prev.price} 円",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
@@ -1333,26 +1333,9 @@ fun buildDistanceSeriesRaw(records: List<FuelRecord>): List<Pair<Long, Double>> 
 fun buildDistanceSeries(records: List<FuelRecord>): List<Pair<Double, String>> =
     buildDistanceSeriesRaw(records).map { it.second to shortDate(it.first) }
 
-/** 満タン給油間の燃費の (timestamp, 燃費) 系列。 */
-fun buildEfficiencySeriesRaw(records: List<FuelRecord>): List<Pair<Long, Double>> {
-    val sorted = records.sortedBy { it.timestamp }
-    val result = mutableListOf<Pair<Long, Double>>()
-    for (i in sorted.indices) {
-        val current = sorted[i]
-        if (!current.isFullTank) continue
-        for (j in i - 1 downTo 0) {
-            val previous = sorted[j]
-            if (previous.isFullTank) {
-                val distance = current.odometer - previous.odometer
-                if (distance > 0 && current.liters > 0) {
-                    result.add(current.timestamp to (distance / current.liters))
-                }
-                break
-            }
-        }
-    }
-    return result
-}
+/** 満タン給油間の燃費の (timestamp, 燃費) 系列。継ぎ足し給油分も燃料に含める。 */
+fun buildEfficiencySeriesRaw(records: List<FuelRecord>): List<Pair<Long, Double>> =
+    calculateFuelEfficiencyEntries(records).map { it.record.timestamp to it.kmPerLiter }
 
 fun buildEfficiencySeries(records: List<FuelRecord>): List<Pair<Double, String>> =
     buildEfficiencySeriesRaw(records).map { it.second to shortDate(it.first) }
@@ -1372,11 +1355,8 @@ fun buildDistanceSeriesMultiVehicle(records: List<FuelRecord>): List<Pair<Double
     buildDistanceSeriesMultiVehicleRaw(records).map { it.second to shortDate(it.first) }
 
 /** 複数車両分のレコードをまとめて「燃費」を計算する（車両ごとに区切って計算し日付順にマージ）。 */
-fun buildEfficiencySeriesMultiVehicleRaw(records: List<FuelRecord>): List<Pair<Long, Double>> {
-    return records.groupBy { it.vehicleId }
-        .flatMap { (_, recs) -> buildEfficiencySeriesRaw(recs) }
-        .sortedBy { it.first }
-}
+fun buildEfficiencySeriesMultiVehicleRaw(records: List<FuelRecord>): List<Pair<Long, Double>> =
+    calculateFuelEfficiencyEntriesMultiVehicle(records).map { it.record.timestamp to it.kmPerLiter }
 
 fun buildEfficiencySeriesMultiVehicle(records: List<FuelRecord>): List<Pair<Double, String>> =
     buildEfficiencySeriesMultiVehicleRaw(records).map { it.second to shortDate(it.first) }
@@ -1581,17 +1561,20 @@ fun ModernChartCard(
 @OptIn(ExperimentalMaterial3Api::class)
 fun FuelRecordEditDialog(
     record: FuelRecord,
+    vehicleRecords: List<FuelRecord> = emptyList(),
+    tankCapacity: Double? = null,
     onDismiss: () -> Unit,
     onSave: (FuelRecord) -> Unit,
     onDelete: (FuelRecord) -> Unit
 ) {
     var selectedDateMillis by remember { mutableStateOf(record.timestamp) }
     var timeText by remember { mutableStateOf(formatTimeOnly(record.timestamp)) }
-    var odometerText by remember { mutableStateOf(formatDouble(record.odometer)) }
-    var litersText by remember { mutableStateOf(formatDouble(record.liters)) }
-    var unitPriceText by remember {
-        mutableStateOf(String.format(Locale.JAPAN, "%.1f", record.unitPrice))
-    }
+    // 編集欄は保存値を丸めずに表示する（丸めると保存し直しただけで燃費が変わってしまう）
+    var odometerText by remember { mutableStateOf(formatForEdit(record.odometer)) }
+    var litersText by remember { mutableStateOf(formatForEdit(record.liters)) }
+    var unitPriceText by remember { mutableStateOf(formatForEdit(record.unitPrice)) }
+    // 走行距離の警告を一度表示したら、同じ内容なら2回目の「保存」でそのまま保存する
+    var acknowledgedWarning by remember { mutableStateOf<String?>(null) }
     var totalPriceText by remember { mutableStateOf(record.price.toString()) }
     var isFullTank by remember { mutableStateOf(record.isFullTank) }
     var errorText by remember { mutableStateOf<String?>(null) }
@@ -1628,6 +1611,9 @@ fun FuelRecordEditDialog(
                     val liters = litersText.toDoubleOrNull()
                     val unitPrice = unitPriceText.toDoubleOrNull()
                     val totalPrice = totalPriceText.toIntOrNull()
+                    val odometerWarning = if (timestamp != null && odometer != null) {
+                        checkOdometerInput(vehicleRecords, timestamp, odometer, tankCapacity, excludeId = record.id)
+                    } else null
 
                     when {
                         timestamp == null -> {
@@ -1635,6 +1621,10 @@ fun FuelRecordEditDialog(
                         }
                         odometer == null || liters == null || unitPrice == null || totalPrice == null -> {
                             errorText = "入力内容を確認してください"
+                        }
+                        odometerWarning != null && odometerWarning != acknowledgedWarning -> {
+                            acknowledgedWarning = odometerWarning
+                            errorText = "⚠️ $odometerWarning\nこのまま保存する場合は、もう一度「保存」を押してください。"
                         }
                         else -> {
                             errorText = null
