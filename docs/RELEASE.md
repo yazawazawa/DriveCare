@@ -39,7 +39,18 @@ git push origin v0.0.1a
 | `GOOGLE_SERVICES_JSON_BASE64` | `app/google-services.json`（Firebase の設定） |
 
 ### 方法A: スクリプトで登録（かんたん）
-[GitHub CLI](https://cli.github.com/) を入れて `gh auth login` を済ませたら、**自分の PC で**リポジトリのフォルダから実行します（Windows は Git Bash）。
+[GitHub CLI](https://cli.github.com/) を入れて `gh auth login` を済ませたら、**自分の PC で**リポジトリのフォルダから実行します。
+
+Windows（PowerShell）:
+
+```powershell
+.\scripts\set-github-secrets.ps1
+```
+
+実行できないと言われたら、先に `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` を実行してください。
+PowerShell で `bash scripts/...` を実行すると、Windows 標準の WSL が呼び出されて `E_UNEXPECTED` になることがあります。PowerShell 版を使ってください。
+
+macOS / Linux（または Windows の Git Bash）:
 
 ```bash
 bash scripts/set-github-secrets.sh

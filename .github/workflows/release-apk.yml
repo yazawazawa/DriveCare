@@ -49,13 +49,13 @@ jobs:
         run: |
           if [ -n "$KEYSTORE_B64" ]; then
             mkdir -p ~/.android
-            echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
+            echo "$KEYSTORE_B64" | tr -d '\r\n ' | base64 -d > ~/.android/debug.keystore
             echo "署名キー: Secrets のキーを使用"
           else
             echo "::warning::ANDROID_DEBUG_KEYSTORE_BASE64 が未設定です。APK の署名は毎回変わります。"
           fi
           if [ -n "$SERVICES_B64" ]; then
-            echo "$SERVICES_B64" | base64 -d > app/google-services.json
+            echo "$SERVICES_B64" | tr -d '\r\n ' | base64 -d > app/google-services.json
             echo "Firebase 設定: Secrets の google-services.json を使用"
           elif [ ! -f app/google-services.json ]; then
             echo "::warning::GOOGLE_SERVICES_JSON_BASE64 が未設定です。クラウド共有は「未設定」になります。"
