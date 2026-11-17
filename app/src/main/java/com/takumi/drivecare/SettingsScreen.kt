@@ -1,160 +1,48 @@
 package com.takumi.drivecare
 
-import android.os.Bundle
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddCircle
-import androidx.compose.material.icons.filled.ArrowDropUp
-import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShowChart
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.*
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.DirectionsCar
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Factory
+import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.IosShare
+import androidx.compose.material.icons.rounded.LocalGasStation
+import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.time.Instant
-import java.time.ZoneId
-import java.util.Date
-import java.util.Locale
-import kotlin.math.roundToInt
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.EvStation
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Timeline
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.sp
-import com.takumi.drivecare.BuildConfig
-import com.takumi.drivecare.ui.theme.DriveCareTheme
-import com.takumi.drivecare.ui.theme.Brand500
-import com.takumi.drivecare.ui.theme.Brand600
-import com.takumi.drivecare.ui.theme.Brand700
-import com.takumi.drivecare.ui.theme.Teal500
-import com.takumi.drivecare.ui.theme.Amber500
-import com.takumi.drivecare.ui.theme.Rose500
-import androidx.activity.compose.rememberLauncherForActivityResult
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.core.content.FileProvider
+import com.takumi.drivecare.ui.glass.GlassInputRow
+import com.takumi.drivecare.ui.glass.GlassListRow
+import com.takumi.drivecare.ui.glass.GlassSection
+import com.takumi.drivecare.ui.glass.PrimaryGlassButton
+import com.takumi.drivecare.ui.glass.RowDivider
+import com.takumi.drivecare.ui.glass.SectionHeader
+import com.takumi.drivecare.ui.glass.SegmentedControl
+import com.takumi.drivecare.ui.glass.StatusBadge
+import com.takumi.drivecare.ui.glass.glass
 
 @Composable
 fun SettingsTopScreen(
     modifier: Modifier = Modifier,
-    vehicles: List<Vehicle>,
-    backupMessage: String?,
+    vehicleCount: Int,
     appVersion: String,
     onOpenVehicleManagement: () -> Unit,
     onExportBackup: () -> Unit,
@@ -162,222 +50,145 @@ fun SettingsTopScreen(
     onImportBackup: () -> Unit,
     onPickAndImportBackup: () -> Unit
 ) {
-    // 確認ダイアログの状態
-    data class ConfirmAction(val title: String, val message: String, val action: () -> Unit)
-    var pendingAction by remember { mutableStateOf<ConfirmAction?>(null) }
+    val g = glass
 
-    // 確認アラートダイアログ
+    data class ConfirmAction(val title: String, val message: String, val label: String, val destructive: Boolean, val action: () -> Unit)
+    var pendingAction by remember { mutableStateOf<ConfirmAction?>(null) }
+    var showNotices by remember { mutableStateOf(false) }
+
     pendingAction?.let { confirm ->
-        AlertDialog(
-            onDismissRequest = { pendingAction = null },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirm.action()
-                    pendingAction = null
-                }) { Text("実行する") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingAction = null }) { Text("キャンセル") }
-            },
-            title = { Text(confirm.title) },
-            text = { Text(confirm.message) }
+        ConfirmDialog(
+            title = confirm.title,
+            message = confirm.message,
+            confirmLabel = confirm.label,
+            destructive = confirm.destructive,
+            onConfirm = confirm.action,
+            onDismiss = { pendingAction = null }
         )
     }
-
-    Column(
-        modifier = modifier
-            .verticalScroll(rememberScrollState())
-            .padding(bottom = 100.dp),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
-    ) {
-        // ─── ヘッダーイラスト ────────────────────────────────────────────
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(
-                    MaterialTheme.colorScheme.primaryContainer,
-                    MaterialTheme.colorScheme.background
-                )))
-                .padding(20.dp)
+    if (showNotices) {
+        GlassDialog(
+            onDismiss = { showNotices = false },
+            title = "ご利用上の注意",
+            actions = { PrimaryGlassButton("閉じる", onClick = { showNotices = false }) }
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("⚙️ 設定", style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary)
-                    Text("DriveCare", style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("${vehicles.size} 台登録中",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Surface(shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer) {
-                            Text("v$appVersion",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                        }
-                    }
+            GlassSection {
+                AppNotices.items.forEachIndexed { i, notice ->
+                    if (i > 0) RowDivider(16.dp)
+                    Text(
+                        notice,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = g.label,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
                 }
-                Text("🛠️", style = MaterialTheme.typography.displaySmall)
             }
         }
+    }
 
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(modifier) {
+        GlassSection {
+            GlassListRow(
+                title = "車両",
+                icon = Icons.Rounded.DirectionsCar,
+                iconTint = g.blue,
+                value = "${vehicleCount}台",
+                showChevron = true,
+                onClick = onOpenVehicleManagement
+            )
+        }
 
-            // ─── 車両管理 ────────────────────────────────────────────────
-            Text("車両管理", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 4.dp, top = 4.dp))
-            Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .clickable { onOpenVehicleManagement() }
-                        .padding(18.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Box(
-                        modifier = Modifier.size(44.dp).background(MaterialTheme.colorScheme.primary.copy(0.15f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) { Text("🚗", style = MaterialTheme.typography.titleMedium) }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("車両を登録・編集", style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
-                        Text("${vehicles.size} 台登録中", style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Icon(Icons.Filled.Settings, contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
-                }
-            }
-
-            // ─── バックアップ ─────────────────────────────────────────────
-            Text("バックアップ", style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 4.dp, top = 8.dp))
-
-            // シェア（他アプリへ）
-            BackupActionCard(
-                emoji = "📤",
-                title = "バックアップをシェア",
-                subtitle = "JSON ファイルを生成してほかのアプリへ共有",
-                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+        GlassSection(
+            header = "バックアップ",
+            footer = "復元すると、現在のデータはすべてバックアップの内容に置き換わります。"
+        ) {
+            GlassListRow(
+                title = "バックアップを共有",
+                subtitle = "ほかのアプリやクラウドへ送る",
+                icon = Icons.Rounded.IosShare,
+                iconTint = g.blue,
                 onClick = {
                     pendingAction = ConfirmAction(
-                        title = "バックアップをシェアしますか？",
-                        message = "現在のデータを JSON ファイルに書き出して、他のアプリへ共有します。",
-                        action = onExportBackup
+                        "バックアップを共有",
+                        "現在のデータを JSON ファイルに書き出して共有します。",
+                        "共有", false, onExportBackup
                     )
                 }
             )
-            // 端末内に保存
-            BackupActionCard(
-                emoji = "💾",
+            RowDivider()
+            GlassListRow(
                 title = "この端末に保存",
-                subtitle = "端末の Documents フォルダに JSON を保存",
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                subtitle = "Documents フォルダに保存",
+                icon = Icons.Rounded.Download,
+                iconTint = g.green,
                 onClick = {
                     pendingAction = ConfirmAction(
-                        title = "この端末に保存しますか？",
-                        message = "現在のデータを端末の Documents フォルダに保存します。",
-                        action = onSaveToDevice
+                        "この端末に保存",
+                        "現在のデータを端末の Documents フォルダに保存します。",
+                        "保存", false, onSaveToDevice
                     )
                 }
             )
-            // 同端末インポート
-            BackupActionCard(
-                emoji = "📥",
-                title = "バックアップを復元（同端末）",
-                subtitle = "同じ端末で書き出したファイルを読み込む",
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            RowDivider()
+            GlassListRow(
+                title = "バックアップから復元",
+                subtitle = "この端末で保存したファイル",
+                icon = Icons.Rounded.Restore,
+                iconTint = g.orange,
                 onClick = {
                     pendingAction = ConfirmAction(
-                        title = "バックアップを復元しますか？",
-                        message = "同端末で保存したバックアップを読み込みます。現在のデータはすべて上書きされます。",
-                        action = onImportBackup
+                        "バックアップから復元",
+                        "この端末に保存したバックアップを読み込みます。現在のデータはすべて上書きされます。",
+                        "復元", true, onImportBackup
                     )
                 }
             )
-            // ファイル選択インポート
-            BackupActionCard(
-                emoji = "📂",
-                title = "ファイルを選択して読み込む",
-                subtitle = "他端末からのバックアップ・Google Drive など",
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            RowDivider()
+            GlassListRow(
+                title = "ファイルを選んで復元",
+                subtitle = "他の端末や Google ドライブから",
+                icon = Icons.Rounded.FolderOpen,
+                iconTint = g.purple,
                 onClick = {
                     pendingAction = ConfirmAction(
-                        title = "ファイルを選択して読み込みますか？",
-                        message = "選択したバックアップファイルを読み込みます。現在のデータはすべて上書きされます。",
-                        action = onPickAndImportBackup
+                        "ファイルを選んで復元",
+                        "選択したバックアップファイルを読み込みます。現在のデータはすべて上書きされます。",
+                        "ファイルを選択", true, onPickAndImportBackup
                     )
                 }
             )
-
-            // フィードバックメッセージ
-            backupMessage?.let { msg ->
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("✅", style = MaterialTheme.typography.bodyMedium)
-                        Text(msg, style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                }
-            }
-
-            // ─── 登録済み車両リスト ───────────────────────────────────────
-            if (vehicles.isNotEmpty()) {
-                Text("登録済み車両", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(start = 4.dp, top = 8.dp))
-                vehicles.forEach { vehicle ->
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text("🚙", style = MaterialTheme.typography.titleMedium)
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(vehicle.displayName, style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium)
-                                Text("${vehicle.fuelType.label} / タンク ${formatDouble(vehicle.tankCapacity)} L",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // ─── 利用上の注意 ─────────────────────────────────────────────
-            AppNoticeSection()
         }
+
+        GlassSection(header = "情報") {
+            GlassListRow(
+                title = "ご利用上の注意",
+                icon = Icons.Rounded.Shield,
+                iconTint = g.secondaryLabel,
+                showChevron = true,
+                onClick = { showNotices = true }
+            )
+            RowDivider()
+            GlassListRow(
+                title = "バージョン",
+                icon = Icons.Rounded.Info,
+                iconTint = g.indigo,
+                value = appVersion
+            )
+        }
+
+        Text(
+            "DriveCare",
+            style = MaterialTheme.typography.labelMedium,
+            color = g.tertiaryLabel,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
 /**
  * リリース前に確認・編集すべき注意書き。
- * ここに追加した文言が設定画面に表示される。
+ * ここに追加した文言が設定画面の「ご利用上の注意」に表示される。
  */
 object AppNotices {
     val items = listOf(
@@ -397,282 +208,158 @@ object AppNotices {
     )
 }
 
-@Composable
-fun AppNoticeSection(notices: List<String> = AppNotices.items) {
-    if (notices.isEmpty()) return
-    Text("ご利用上の注意", style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 4.dp, top = 8.dp))
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            notices.forEach { notice ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("・", style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(notice, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun BackupActionCard(
-    emoji: String,
-    title: String,
-    subtitle: String,
-    containerColor: androidx.compose.ui.graphics.Color,
-    onClick: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = containerColor.copy(alpha = 0.8f),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.clickable(onClick = onClick).padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Text(emoji, style = MaterialTheme.typography.titleLarge)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
+// ─────────────────────────────────────────────────────────────────────────────
+// 車両の管理
+// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun VehicleManagementScreen(
     modifier: Modifier = Modifier,
     vehicles: List<Vehicle>,
-    makerText: String,
-    onMakerChange: (String) -> Unit,
-    modelText: String,
-    onModelChange: (String) -> Unit,
-    tankCapacityText: String,
-    onTankCapacityChange: (String) -> Unit,
-    selectedFuelType: FuelType,
-    onFuelTypeSelected: (FuelType) -> Unit,
-    onAddVehicle: () -> Unit,
+    selectedVehicleId: Int?,
+    onAddVehicle: (maker: String, model: String, tankCapacity: Double, fuelType: FuelType) -> Unit,
     onUpdateVehicle: (Vehicle) -> Unit,
-    onDeleteVehicle: (Vehicle) -> Unit,
-    onBack: () -> Unit
+    onDeleteVehicle: (Vehicle) -> Unit
 ) {
+    val g = glass
+    val context = LocalContext.current
     var editVehicle by remember { mutableStateOf<Vehicle?>(null) }
-    var deleteVehicle by remember { mutableStateOf<Vehicle?>(null) }
+    var addingVehicle by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = modifier
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        TextButton(onClick = onBack) {
-            Text("← 設定へ戻る")
-        }
-
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text("車両登録", style = MaterialTheme.typography.titleMedium)
-
-                OutlinedTextField(
-                    value = makerText,
-                    onValueChange = { onMakerChange(it.replace("\n", "").trimStart()) },
-                    label = { Text("メーカー") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
+    ScreenColumn(modifier) {
+        GlassSection(
+            header = if (vehicles.isEmpty()) null else "登録済み",
+            footer = if (vehicles.isEmpty()) "最初の車両を登録しましょう。" else "タップすると編集・削除できます。"
+        ) {
+            vehicles.forEachIndexed { index, vehicle ->
+                if (index > 0) RowDivider()
+                GlassListRow(
+                    title = vehicle.displayName,
+                    subtitle = "${vehicle.fuelType.label} · タンク ${formatDouble(vehicle.tankCapacity)} L",
+                    icon = Icons.Rounded.DirectionsCar,
+                    iconTint = g.blue,
+                    showChevron = true,
+                    onClick = { editVehicle = vehicle },
+                    trailing = if (vehicle.id == selectedVehicleId) {
+                        { StatusBadge("選択中", g.blue) }
+                    } else null
                 )
-                OutlinedTextField(
-                    value = modelText,
-                    onValueChange = { onModelChange(it.replace("\n", "").trimStart()) },
-                    label = { Text("車種") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = tankCapacityText,
-                    onValueChange = { onTankCapacityChange(sanitizeDecimalInput(it)) },
-                    label = { Text("タンク容量 (L)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-                FuelTypeDropdown(
-                    selectedFuelType = selectedFuelType,
-                    onFuelTypeSelected = onFuelTypeSelected
-                )
-
-                Button(
-                    onClick = onAddVehicle,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("車両を追加")
-                }
             }
+            if (vehicles.isNotEmpty()) RowDivider()
+            GlassListRow(
+                title = "車両を追加",
+                icon = Icons.Rounded.Add,
+                iconTint = g.green,
+                titleColor = MaterialTheme.colorScheme.primary,
+                onClick = { addingVehicle = true }
+            )
         }
+    }
 
-        if (vehicles.isNotEmpty()) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("登録済み車両", style = MaterialTheme.typography.titleMedium)
-
-                    vehicles.forEach { vehicle ->
-                        HorizontalDivider()
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(vehicle.displayName, style = MaterialTheme.typography.titleSmall)
-                                Text("油種: ${vehicle.fuelType.label}")
-                                Text("タンク容量: ${formatDouble(vehicle.tankCapacity)} L")
-                            }
-
-                            Row {
-                                TextButton(onClick = { editVehicle = vehicle }) {
-                                    Text("編集")
-                                }
-                                TextButton(onClick = { deleteVehicle = vehicle }) {
-                                    Text("削除")
-                                }
-                            }
-                        }
-                    }
-                }
+    if (addingVehicle) {
+        VehicleEditDialog(
+            vehicle = null,
+            onDismiss = { addingVehicle = false },
+            onSave = { maker, model, tank, fuelType ->
+                onAddVehicle(maker, model, tank, fuelType)
+                addingVehicle = false
             }
-        }
+        )
     }
 
     editVehicle?.let { vehicle ->
         VehicleEditDialog(
             vehicle = vehicle,
             onDismiss = { editVehicle = null },
-            onSave = {
-                onUpdateVehicle(it)
+            onSave = { maker, model, tank, fuelType ->
+                onUpdateVehicle(vehicle.copy(maker = maker, model = model, tankCapacity = tank, fuelType = fuelType))
+                editVehicle = null
+            },
+            onDelete = {
+                onDeleteVehicle(vehicle)
+                MaintenanceItemDefRepository.removeVehicle(context, vehicle.id)
                 editVehicle = null
             }
         )
     }
-
-    deleteVehicle?.let { vehicle ->
-        AlertDialog(
-            onDismissRequest = { deleteVehicle = null },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDeleteVehicle(vehicle)
-                        deleteVehicle = null
-                    }
-                ) {
-                    Text("削除")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { deleteVehicle = null }) {
-                    Text("キャンセル")
-                }
-            },
-            title = { Text("車両を削除") },
-            text = { Text("この車両と紐づく給油履歴を削除しますか？") }
-        )
-    }
 }
 
+/** 車両の追加（[vehicle] が null）と編集を兼ねるダイアログ。 */
 @Composable
 fun VehicleEditDialog(
-    vehicle: Vehicle,
+    vehicle: Vehicle?,
     onDismiss: () -> Unit,
-    onSave: (Vehicle) -> Unit
+    onSave: (maker: String, model: String, tankCapacity: Double, fuelType: FuelType) -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
-    var makerText by remember { mutableStateOf(vehicle.maker) }
-    var modelText by remember { mutableStateOf(vehicle.model) }
-    var tankCapacityText by remember { mutableStateOf(formatDouble(vehicle.tankCapacity)) }
-    var fuelType by remember { mutableStateOf(vehicle.fuelType) }
+    val g = glass
+    var makerText by remember { mutableStateOf(vehicle?.maker ?: "") }
+    var modelText by remember { mutableStateOf(vehicle?.model ?: "") }
+    var tankCapacityText by remember { mutableStateOf(vehicle?.let { formatDouble(it.tankCapacity) } ?: "") }
+    var fuelType by remember { mutableStateOf(vehicle?.fuelType ?: FuelType.REGULAR) }
     var errorText by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(
+    if (confirmDelete && vehicle != null && onDelete != null) {
+        ConfirmDialog(
+            title = "車両を削除",
+            message = "「${vehicle.displayName}」と、この車両の給油・整備の記録をすべて削除します。この操作は取り消せません。",
+            confirmLabel = "削除",
+            destructive = true,
+            onConfirm = onDelete,
+            onDismiss = { confirmDelete = false }
+        )
+    }
+
+    GlassDialog(
+        onDismiss = onDismiss,
+        title = if (vehicle == null) "車両を追加" else "車両を編集",
+        actions = {
+            PrimaryGlassButton(
+                text = if (vehicle == null) "追加" else "保存",
                 onClick = {
                     val tank = tankCapacityText.toDoubleOrNull()
-                    when {
-                        makerText.isBlank() -> errorText = "メーカーを入力してください"
-                        modelText.isBlank() -> errorText = "車種を入力してください"
-                        tank == null -> errorText = "タンク容量を入力してください"
-                        else -> onSave(
-                            vehicle.copy(
-                                maker = makerText.trim(),
-                                model = modelText.trim(),
-                                tankCapacity = tank,
-                                fuelType = fuelType
-                            )
-                        )
+                    errorText = when {
+                        makerText.isBlank() -> "メーカーを入力してください"
+                        modelText.isBlank() -> "車種を入力してください"
+                        tank == null || tank <= 0 -> "タンク容量を入力してください"
+                        else -> null
+                    }
+                    if (errorText == null && tank != null) {
+                        onSave(makerText.trim(), modelText.trim(), tank, fuelType)
                     }
                 }
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("キャンセル")
-            }
-        },
-        title = { Text("車両を編集") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                errorText?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                OutlinedTextField(
-                    value = makerText,
-                    onValueChange = { makerText = it.replace("\n", "").trimStart() },
-                    label = { Text("メーカー") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = modelText,
-                    onValueChange = { modelText = it.replace("\n", "").trimStart() },
-                    label = { Text("車種") },
-                    singleLine = true
-                )
-                OutlinedTextField(
-                    value = tankCapacityText,
-                    onValueChange = { tankCapacityText = sanitizeDecimalInput(it) },
-                    label = { Text("タンク容量 (L)") },
-                    singleLine = true
-                )
-                FuelTypeDropdown(
-                    selectedFuelType = fuelType,
-                    onFuelTypeSelected = { fuelType = it }
-                )
+            )
+            if (onDelete != null) {
+                DestructiveTextButton("この車両を削除", onClick = { confirmDelete = true })
             }
         }
-    )
+    ) {
+        GlassSection {
+            GlassInputRow("メーカー", makerText, { makerText = it.replace("\n", "").trimStart(); errorText = null },
+                icon = Icons.Rounded.Factory, iconTint = g.indigo, placeholder = "例: トヨタ",
+                keyboardType = KeyboardType.Text)
+            RowDivider()
+            GlassInputRow("車種", modelText, { modelText = it.replace("\n", "").trimStart(); errorText = null },
+                icon = Icons.Rounded.DirectionsCar, iconTint = g.blue, placeholder = "例: プリウス",
+                keyboardType = KeyboardType.Text)
+            RowDivider()
+            GlassInputRow("タンク容量", tankCapacityText, { tankCapacityText = sanitizeDecimalInput(it); errorText = null },
+                icon = Icons.Rounded.LocalGasStation, iconTint = g.teal, placeholder = "45", unit = "L")
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            SectionHeader("油種")
+            SegmentedControl(
+                options = FuelType.entries.map { it.label },
+                selectedIndex = fuelType.ordinal,
+                onSelect = { fuelType = FuelType.entries[it] },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+        errorText?.let {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(it, color = g.red, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 8.dp))
+            }
+        }
+    }
 }
-
-
