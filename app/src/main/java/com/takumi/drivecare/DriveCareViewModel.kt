@@ -11,6 +11,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import com.takumi.drivecare.cloud.CloudCoordinator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -27,17 +31,28 @@ data class DriveCareUiState(
     val errorMessage: String? = null
 )
 
+/** 削除・編集の直後に出す「元に戻す」の案内。 */
+data class UndoPrompt(val entryId: Long, val message: String)
+
 class DriveCareViewModel(
     private val repository: DriveCareRepository,
-    appContext: Context
+    private val appContext: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DriveCareUiState())
     val uiState: StateFlow<DriveCareUiState> = _uiState.asStateFlow()
 
+    /** 直近の削除・編集の履歴（最大10件）。端末内に保存され、ここから元に戻せる。 */
+    val history = OperationHistory(appContext)
+
+    private val _undoPrompts = MutableSharedFlow<UndoPrompt>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val undoPrompts: SharedFlow<UndoPrompt> = _undoPrompts.asSharedFlow()
+
     /** アカウント間のクラウド共有。共有中は repository の取得元がクラウドに切り替わる。 */
     val cloud = CloudCoordinator(appContext, repository, viewModelScope) { resetSelection ->
         if (resetSelection) {
+            // 共有の開始・終了ではデータのIDが変わるため、元に戻す履歴は使えなくなる
+            history.clear()
             _uiState.value = _uiState.value.copy(selectedVehicleId = null, lastUsedVehicleId = null)
         }
         safeReload()
@@ -146,14 +161,29 @@ class DriveCareViewModel(
     }
 
     fun updateVehicle(vehicle: Vehicle) {
+        val before = _uiState.value.vehicles.firstOrNull { it.id == vehicle.id }
         launchSafe {
             repository.updateVehicle(vehicle)
+            if (before != null && before != vehicle) {
+                logOperation(HistoryType.EDIT_VEHICLE, "${before.displayName}", vehicle = before.toBackup(), message = "車両情報を保存しました")
+            }
             safeReload()
         }
     }
 
     fun deleteVehicle(vehicle: Vehicle) {
+        val state = _uiState.value
+        // 元に戻せるよう、この車両の記録と整備項目の設定をまとめて保存してから削除する
+        val fuel = state.fuelRecords.filter { it.vehicleId == vehicle.id }
+        val maintenance = state.maintenanceRecords.filter { it.vehicleId == vehicle.id }
+        val defsJson = MaintenanceItemDefRepository.toJson(MaintenanceItemDefRepository.getItemDefs(appContext, vehicle.id))
         launchSafe {
+            logOperation(
+                HistoryType.DELETE_VEHICLE, "${vehicle.displayName}（給油${fuel.size}件・整備${maintenance.size}件）",
+                vehicle = vehicle.toBackup(), fuel = fuel.map { it.toBackup() },
+                maintenance = maintenance.map { it.toBackup() }, itemDefsJson = defsJson,
+                message = "車両を削除しました"
+            )
             repository.deleteVehicle(vehicle)
             val vehicles = repository.getAllVehicles()
             val nextSelected = vehicles.lastOrNull()?.id
@@ -198,28 +228,38 @@ class DriveCareViewModel(
     }
 
     fun updateFuelRecord(record: FuelRecord) {
+        val before = _uiState.value.fuelRecords.firstOrNull { it.id == record.id }
         launchSafe {
             repository.updateFuelRecord(record)
+            if (before != null && before != record) {
+                logOperation(HistoryType.EDIT_FUEL, fuelLabel(before), fuel = listOf(before.toBackup()), message = "変更を保存しました")
+            }
             safeReload()
         }
     }
 
     fun deleteFuelRecord(record: FuelRecord) {
         launchSafe {
+            logOperation(HistoryType.DELETE_FUEL, fuelLabel(record), fuel = listOf(record.toBackup()), message = "給油記録を削除しました")
             repository.deleteFuelRecord(record)
             safeReload()
         }
     }
 
     fun updateMaintenanceRecord(record: MaintenanceRecord) {
+        val before = _uiState.value.maintenanceRecords.firstOrNull { it.id == record.id }
         launchSafe {
             repository.updateMaintenanceRecord(record)
+            if (before != null && before != record) {
+                logOperation(HistoryType.EDIT_MAINT, maintenanceLabel(before), maintenance = listOf(before.toBackup()), message = "変更を保存しました")
+            }
             safeReload()
         }
     }
 
     fun deleteMaintenanceRecord(record: MaintenanceRecord) {
         launchSafe {
+            logOperation(HistoryType.DELETE_MAINT, maintenanceLabel(record), maintenance = listOf(record.toBackup()), message = "整備記録を削除しました")
             repository.deleteMaintenanceRecord(record)
             safeReload()
         }
@@ -258,6 +298,99 @@ class DriveCareViewModel(
             )
             safeReload()
         }
+    }
+
+    // ── 操作の履歴と「元に戻す」 ───────────────────────────────────────────
+
+    private fun fuelLabel(r: FuelRecord) = "${formatDateOnly(r.timestamp)} · ${formatYen(r.price)}"
+    private fun maintenanceLabel(r: MaintenanceRecord) = "${formatDateOnly(r.timestamp)} · ${formatNumber(r.odometer)} km"
+
+    /** 操作の直前の状態を履歴に保存し、「元に戻す」の案内を出す。 */
+    private fun logOperation(
+        type: HistoryType,
+        detail: String,
+        message: String,
+        vehicle: BackupVehicle? = null,
+        fuel: List<BackupFuelRecord> = emptyList(),
+        maintenance: List<BackupMaintenanceRecord> = emptyList(),
+        itemDefsJson: String? = null
+    ) {
+        val now = System.currentTimeMillis()
+        val entry = HistoryEntry(now, now, type.name, "${type.label} · $detail", vehicle, fuel, maintenance, itemDefsJson)
+        history.add(entry)
+        _undoPrompts.tryEmit(UndoPrompt(entry.id, message))
+    }
+
+    /** 履歴の操作を元に戻す。結果（成否とメッセージ）を [onDone] に返す。 */
+    fun undo(entryId: Long, onDone: (ok: Boolean, message: String) -> Unit) {
+        val entry = history.find(entryId)
+        val type = entry?.historyType
+        if (entry == null || type == null) {
+            onDone(false, "この操作は元に戻せません")
+            return
+        }
+        viewModelScope.launch {
+            val result = try {
+                applyUndo(entry, type)
+            } catch (e: Exception) {
+                Log.e(TAG, "Undo failed", e)
+                "元に戻せませんでした"
+            }
+            if (result == null) {
+                history.remove(entryId)
+                safeReload()
+                onDone(true, "元に戻しました")
+            } else {
+                onDone(false, result)
+            }
+        }
+    }
+
+    /** 元に戻す処理の本体。成功なら null、失敗なら理由を返す。 */
+    private suspend fun applyUndo(entry: HistoryEntry, type: HistoryType): String? {
+        val vehicleIds = repository.getAllVehicles().map { it.id }.toSet()
+        val missingVehicle = "元の車両が見つからないため、元に戻せません"
+        when (type) {
+            HistoryType.DELETE_FUEL -> {
+                val r = entry.fuel.firstOrNull()?.toEntity() ?: return "履歴が壊れています"
+                if (r.vehicleId !in vehicleIds) return missingVehicle
+                repository.insertFuelRecord(r.copy(id = 0))
+            }
+            HistoryType.EDIT_FUEL -> {
+                val r = entry.fuel.firstOrNull()?.toEntity() ?: return "履歴が壊れています"
+                if (r.vehicleId !in vehicleIds) return missingVehicle
+                // 編集後に削除されていた場合は、元の内容で作り直す
+                if (repository.getAllFuelRecords().any { it.id == r.id }) repository.updateFuelRecord(r)
+                else repository.insertFuelRecord(r.copy(id = 0))
+            }
+            HistoryType.DELETE_MAINT -> {
+                val r = entry.maintenance.firstOrNull()?.toEntity() ?: return "履歴が壊れています"
+                if (r.vehicleId !in vehicleIds) return missingVehicle
+                repository.insertMaintenanceRecord(r.copy(id = 0))
+            }
+            HistoryType.EDIT_MAINT -> {
+                val r = entry.maintenance.firstOrNull()?.toEntity() ?: return "履歴が壊れています"
+                if (r.vehicleId !in vehicleIds) return missingVehicle
+                if (repository.getAllMaintenanceRecords().any { it.id == r.id }) repository.updateMaintenanceRecord(r)
+                else repository.insertMaintenanceRecord(r.copy(id = 0))
+            }
+            HistoryType.EDIT_VEHICLE -> {
+                val v = entry.vehicle?.toEntity() ?: return "履歴が壊れています"
+                if (v.id in vehicleIds) repository.updateVehicle(v) else repository.insertVehicle(v.copy(id = 0))
+            }
+            HistoryType.DELETE_VEHICLE -> {
+                val v = entry.vehicle?.toEntity() ?: return "履歴が壊れています"
+                // 車両のIDは作り直しで変わるため、新しいIDで記録と整備項目の設定をつなぎ直す
+                val newId = repository.insertVehicle(v.copy(id = 0)).toInt()
+                entry.fuel.forEach { repository.insertFuelRecord(it.toEntity().copy(id = 0, vehicleId = newId)) }
+                entry.maintenance.forEach { repository.insertMaintenanceRecord(it.toEntity().copy(id = 0, vehicleId = newId)) }
+                entry.itemDefsJson?.let { raw ->
+                    MaintenanceItemDefRepository.fromJson(raw)?.let { MaintenanceItemDefRepository.saveItemDefs(appContext, newId, it) }
+                }
+                _uiState.value = _uiState.value.copy(selectedVehicleId = newId, lastUsedVehicleId = newId)
+            }
+        }
+        return null
     }
 
     /**

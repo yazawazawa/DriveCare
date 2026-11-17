@@ -51,6 +51,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.SnackbarVisuals
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -127,7 +128,8 @@ enum class RecordMode(val label: String) {
 enum class SettingsScreen(val title: String) {
     TOP("設定"),
     VEHICLE_MANAGEMENT("車両"),
-    CLOUD("クラウド共有")
+    CLOUD("クラウド共有"),
+    HISTORY("操作履歴")
 }
 
 enum class ReportGraphType(val label: String) {
@@ -213,6 +215,7 @@ fun ScreenColumn(
 fun DriveCareApp(viewModel: DriveCareViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val cloudState by viewModel.cloud.state.collectAsStateWithLifecycle()
+    val historyEntries by viewModel.history.entries.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -267,6 +270,20 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
             snackbarHostState.currentSnackbarData?.dismiss()
             snackbarHostState.showSnackbar(ToastVisuals(message, isError))
         }
+    }
+
+    // 削除・編集の直後に「元に戻す」付きで知らせる
+    fun showUndo(message: String, entryId: Long) {
+        coroutineScope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            val result = snackbarHostState.showSnackbar(ToastVisuals(message, false, "元に戻す"))
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undo(entryId) { ok, text -> showMessage(text, !ok) }
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        viewModel.undoPrompts.collect { showUndo(it.message, it.entryId) }
     }
 
     // 復元するファイルを選ぶ（拡張子は独自のため種類は絞らない）。選択後の処理は RestoreFlow が担当する
@@ -527,6 +544,8 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                             vehicleCount = uiState.vehicles.size,
                             appVersion = BuildConfig.VERSION_NAME,
                             onOpenVehicleManagement = { settingsScreen = SettingsScreen.VEHICLE_MANAGEMENT },
+                            historyCount = historyEntries.size,
+                            onOpenHistory = { settingsScreen = SettingsScreen.HISTORY },
                             cloudSummary = cloudState.summary(),
                             onOpenCloud = { settingsScreen = SettingsScreen.CLOUD },
                             onCreateBackup = { password, share ->
@@ -547,6 +566,12 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                                     pickBackupLauncher.launch("*/*")
                                 }
                             }
+                        )
+
+                        SettingsScreen.HISTORY -> OperationHistoryScreen(
+                            modifier = screenModifier,
+                            entries = historyEntries,
+                            onUndo = { id -> viewModel.undo(id) { ok, text -> showMessage(text, !ok) } }
                         )
 
                         SettingsScreen.CLOUD -> CloudScreen(
@@ -626,7 +651,12 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                 .imePadding()
                 .padding(bottom = if (imeVisible) 12.dp else 92.dp, start = 24.dp, end = 24.dp)
         ) { data ->
-            GlassToast(data.visuals.message, (data.visuals as? ToastVisuals)?.isError == true)
+            GlassToast(
+                message = data.visuals.message,
+                isError = (data.visuals as? ToastVisuals)?.isError == true,
+                actionLabel = data.visuals.actionLabel,
+                onAction = { data.performAction() }
+            )
         }
     }
 }
@@ -703,19 +733,21 @@ private fun AppHeader(
 
 private data class ToastVisuals(
     override val message: String,
-    val isError: Boolean
-) : SnackbarVisuals {
+    val isError: Boolean,
     override val actionLabel: String? = null
+) : SnackbarVisuals {
     override val withDismissAction: Boolean = false
-    override val duration: SnackbarDuration = SnackbarDuration.Short
+    // 「元に戻す」を押す時間を確保するため、操作ボタン付きは長めに表示する
+    override val duration: SnackbarDuration =
+        if (actionLabel != null) SnackbarDuration.Long else SnackbarDuration.Short
 }
 
 @Composable
-private fun GlassToast(message: String, isError: Boolean) {
+private fun GlassToast(message: String, isError: Boolean, actionLabel: String?, onAction: () -> Unit) {
     Row(
         modifier = Modifier
             .glass(RoundedCornerShape(22.dp), elevation = 16.dp)
-            .padding(horizontal = 18.dp, vertical = 14.dp),
+            .padding(start = 18.dp, end = if (actionLabel != null) 8.dp else 18.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -729,8 +761,15 @@ private fun GlassToast(message: String, isError: Boolean) {
             message,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
-            color = glass.label
+            color = glass.label,
+            modifier = Modifier.weight(1f, fill = false)
         )
-        Spacer(Modifier.width(2.dp))
+        if (actionLabel != null) {
+            TextButton(onClick = onAction) {
+                Text(actionLabel, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+            }
+        } else {
+            Spacer(Modifier.width(2.dp))
+        }
     }
 }

@@ -107,6 +107,9 @@ object MaintenanceItemDefRepository {
 
     fun toJson(defs: List<MaintenanceItemDef>): String = json.encodeToString(defs)
 
+    fun fromJson(raw: String): List<MaintenanceItemDef>? =
+        runCatching { json.decodeFromString<List<MaintenanceItemDef>>(raw) }.getOrNull()
+
     private fun persist(context: Context, vehicleId: Int, defs: List<MaintenanceItemDef>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString("vehicle_$vehicleId", json.encodeToString(defs)).apply()
