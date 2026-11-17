@@ -1,5 +1,11 @@
 package com.takumi.drivecare
 
+import androidx.compose.ui.graphics.PathMeasure
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Animatable
+import com.takumi.drivecare.ui.glass.CountUpText
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -462,8 +468,9 @@ fun ReportScreen(
             Spacer(Modifier.height(10.dp))
             Text(hero.label, style = MaterialTheme.typography.bodySmall, color = g.secondaryLabel)
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    hero.value?.let { formatChartNumber(it, graphMeta.unit) } ?: "—",
+                CountUpText(
+                    value = hero.value,
+                    format = { formatChartNumber(it, graphMeta.unit) },
                     style = MaterialTheme.typography.displaySmall,
                     color = g.label
                 )
@@ -724,6 +731,9 @@ fun ModernLineChart(
     val textColor = g.secondaryLabel
     val gridColor = g.separator
     var selectedIndex by remember(values) { mutableIntStateOf(values.lastIndex) }
+    // 線が左から右へ描かれていく。データが変わると、もう一度描き直す
+    val draw = remember(values) { Animatable(0f) }
+    LaunchedEffect(values) { draw.animateTo(1f, tween(1100, easing = FastOutSlowInEasing)) }
 
     // データの最大・最小そのままだと点が上下端に張り付くため、上下に余白を持たせる
     val rawMax = values.max()
@@ -747,6 +757,7 @@ fun ModernLineChart(
             }
     ) {
         val paints = ChartPaints(density, textColor.toArgb(), accentColor.toArgb())
+        val p = draw.value
         val leftPad = 44.dp.toPx()
         val rightPad = 16.dp.toPx()
         val topPad = 30.dp.toPx()
@@ -791,47 +802,61 @@ fun ModernLineChart(
             drawPath(
                 fill,
                 Brush.verticalGradient(
-                    listOf(accentColor.copy(alpha = 0.32f), accentColor.copy(alpha = 0f)),
+                    listOf(accentColor.copy(alpha = 0.32f * p), accentColor.copy(alpha = 0f)),
                     startY = topPad,
                     endY = topPad + usableHeight
                 )
             )
-            drawPath(line, accentColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
+            // 線を途中まで切り出して描く
+            val measure = PathMeasure().apply { setPath(line, false) }
+            val partial = Path()
+            measure.getSegment(0f, measure.length * p, partial, true)
+            drawPath(partial, accentColor, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round))
         }
 
         // 基準線（平均 or 中央値）
         if (referenceValue != null) {
             val refY = yOf(referenceValue)
             drawLine(
-                color = accentColor.copy(alpha = 0.7f),
+                color = accentColor.copy(alpha = 0.7f * p),
                 start = Offset(leftPad, refY),
                 end = Offset(leftPad + usableWidth, refY),
                 strokeWidth = 1.5.dp.toPx(),
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()), 0f)
             )
-            drawContext.canvas.nativeCanvas.drawText(
-                "$referenceLabel ${formatChartValue(referenceValue, valueSuffix)}",
-                leftPad + usableWidth,
-                refY - 5.dp.toPx(),
-                paints.reference
-            )
+            if (p > 0.6f) {
+                drawContext.canvas.nativeCanvas.drawText(
+                    "$referenceLabel ${formatChartValue(referenceValue, valueSuffix)}",
+                    leftPad + usableWidth,
+                    refY - 5.dp.toPx(),
+                    paints.reference
+                )
+            }
         }
 
         // 点とラベル（ラベルは混み合わないよう間引く）
         val labelEvery = (values.size / 8).coerceAtLeast(1).let { if (stepX >= 52.dp.toPx()) 1 else it }
-        points.forEachIndexed { i, p ->
+        points.forEachIndexed { i, point ->
             val selected = i == selectedIndex
-            drawCircle(Color.White, radius = if (selected) 6.5.dp.toPx() else 4.dp.toPx(), center = p)
-            drawCircle(accentColor, radius = if (selected) 4.5.dp.toPx() else 2.5.dp.toPx(), center = p)
+            // 線が通り過ぎた点から順に、ぽんと現れる
+            val reach = if (points.size > 1) i / (points.size - 1f) else 0f
+            val appear = ((p - reach) * points.size * 1.5f + 0.001f).coerceIn(0f, 1f)
+            if (appear > 0f) {
+                val grow = if (selected) 1f else appear
+                drawCircle(Color.White.copy(alpha = appear), radius = (if (selected) 6.5.dp.toPx() else 4.dp.toPx()) * grow, center = point)
+                drawCircle(accentColor.copy(alpha = appear), radius = (if (selected) 4.5.dp.toPx() else 2.5.dp.toPx()) * grow, center = point)
+            }
             if (i < labels.size && (i % labelEvery == 0 || selected)) {
-                drawContext.canvas.nativeCanvas.drawText(labels[i], p.x, size.height - 6.dp.toPx(), paints.axisCenter)
+                drawContext.canvas.nativeCanvas.drawText(labels[i], point.x, size.height - 6.dp.toPx(), paints.axisCenter)
             }
         }
 
-        // 選択中の値
-        points.getOrNull(selectedIndex)?.let { p ->
-            drawLine(accentColor.copy(alpha = 0.35f), Offset(p.x, topPad), Offset(p.x, topPad + usableHeight), strokeWidth = 1.dp.toPx())
-            drawValueBadge(formatChartValue(values[selectedIndex], valueSuffix), p.x, p.y - 10.dp.toPx(), accentColor, paints)
+        // 選択中の値（描き終わってから表示）
+        if (p >= 0.98f) {
+            points.getOrNull(selectedIndex)?.let { point ->
+                drawLine(accentColor.copy(alpha = 0.35f), Offset(point.x, topPad), Offset(point.x, topPad + usableHeight), strokeWidth = 1.dp.toPx())
+                drawValueBadge(formatChartValue(values[selectedIndex], valueSuffix), point.x, point.y - 10.dp.toPx(), accentColor, paints)
+            }
         }
     }
 }
@@ -853,6 +878,10 @@ fun ModernBarChart(
     val gridColor = g.separator
     var selectedIndex by remember(values) { mutableIntStateOf(values.lastIndex) }
 
+    // 棒が下から順に伸びる。データが変わると、もう一度伸ばし直す
+    val grow = remember(values) { Animatable(0f) }
+    LaunchedEffect(values) { grow.animateTo(1f, tween(1000, easing = LinearEasing)) }
+
     val rawMax = values.max()
     val maxValue = if (rawMax > 0f) rawMax * 1.2f else 1f
 
@@ -869,6 +898,7 @@ fun ModernBarChart(
             }
     ) {
         val paints = ChartPaints(density, textColor.toArgb(), accentColor.toArgb())
+        val p = grow.value
         val leftPad = 44.dp.toPx()
         val rightPad = 12.dp.toPx()
         val topPad = 30.dp.toPx()
@@ -890,7 +920,10 @@ fun ModernBarChart(
 
         values.forEachIndexed { index, value ->
             val cx = leftPad + barArea * index + barArea / 2f
-            val barHeight = (usableHeight * (value / maxValue)).coerceAtLeast(2.dp.toPx())
+            // 左の棒から順に、少しずつ遅れて伸びる
+            val t = (p * 1.5f - index.toFloat() / values.size * 0.5f).coerceIn(0f, 1f)
+            val eased = FastOutSlowInEasing.transform(t)
+            val barHeight = (usableHeight * (value / maxValue)).coerceAtLeast(2.dp.toPx()) * eased
             val top = topPad + usableHeight - barHeight
             val selected = index == selectedIndex
             drawRoundRect(
@@ -906,7 +939,7 @@ fun ModernBarChart(
             if (index < labels.size) {
                 drawContext.canvas.nativeCanvas.drawText(labels[index], cx, size.height - 6.dp.toPx(), paints.axisCenter)
             }
-            if (selected) {
+            if (selected && p >= 0.98f) {
                 drawValueBadge(formatChartValue(value, valueSuffix), cx, top - 6.dp.toPx(), accentColor, paints)
             }
         }
@@ -914,18 +947,20 @@ fun ModernBarChart(
         if (referenceValue != null) {
             val refY = topPad + usableHeight - usableHeight * (referenceValue / maxValue)
             drawLine(
-                color = accentColor.copy(alpha = 0.7f),
+                color = accentColor.copy(alpha = 0.7f * p),
                 start = Offset(leftPad, refY),
                 end = Offset(leftPad + usableWidth, refY),
                 strokeWidth = 1.5.dp.toPx(),
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx()), 0f)
             )
-            drawContext.canvas.nativeCanvas.drawText(
-                "$referenceLabel ${formatChartValue(referenceValue, valueSuffix)}",
-                leftPad + usableWidth,
-                refY - 5.dp.toPx(),
-                paints.reference
-            )
+            if (p > 0.6f) {
+                drawContext.canvas.nativeCanvas.drawText(
+                    "$referenceLabel ${formatChartValue(referenceValue, valueSuffix)}",
+                    leftPad + usableWidth,
+                    refY - 5.dp.toPx(),
+                    paints.reference
+                )
+            }
         }
     }
 }

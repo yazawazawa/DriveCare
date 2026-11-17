@@ -1,5 +1,8 @@
 package com.takumi.drivecare
 
+import com.takumi.drivecare.ui.glass.popIn
+import com.takumi.drivecare.ui.glass.LocalStagger
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +62,8 @@ fun GlassDialog(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val g = glass
+    // 画面の部品を順に出す演出は、ダイアログの中では行わない
+    CompositionLocalProvider(LocalStagger provides null) {
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -70,6 +75,7 @@ fun GlassDialog(
                 .imePadding()
                 .widthIn(max = 520.dp)
                 .fillMaxWidth()
+                .popIn()
                 .shadow(30.dp, shape, ambientColor = g.shadow, spotColor = g.shadow)
                 .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
@@ -119,6 +125,7 @@ fun GlassDialog(
             )
         }
     }
+    }
 }
 
 /** 確認用のシンプルなアラート（削除・上書きなど）。 */
@@ -137,6 +144,7 @@ fun ConfirmDialog(
         Column(
             modifier = Modifier
                 .widthIn(max = 340.dp)
+                .popIn()
                 .shadow(30.dp, shape, ambientColor = g.shadow, spotColor = g.shadow)
                 .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)

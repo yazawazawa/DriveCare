@@ -1,5 +1,6 @@
 package com.takumi.drivecare
 
+import com.takumi.drivecare.ui.glass.CountUpText
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -87,8 +88,9 @@ fun HistoryScreen(
         GlassCard(modifier = Modifier.fillMaxWidth()) {
             Text("平均燃費", style = MaterialTheme.typography.labelLarge, color = g.secondaryLabel)
             Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    avgEfficiency?.let { formatEfficiency(it) } ?: "—",
+                CountUpText(
+                    value = avgEfficiency?.toFloat(),
+                    format = { formatEfficiency(it.toDouble()) },
                     style = MaterialTheme.typography.displaySmall,
                     color = g.label
                 )

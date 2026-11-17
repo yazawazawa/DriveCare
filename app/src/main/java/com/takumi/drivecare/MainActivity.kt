@@ -1,5 +1,16 @@
 package com.takumi.drivecare
 
+import com.takumi.drivecare.ui.glass.popIn
+import com.takumi.drivecare.ui.glass.StaggerState
+import com.takumi.drivecare.ui.glass.LocalStagger
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.AnimatedContent
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
@@ -198,17 +209,48 @@ fun ScreenColumn(
     spacing: Dp = 22.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
-            .padding(top = 12.dp, bottom = BottomBarSpace)
-            .navigationBarsPadding(),
-        verticalArrangement = Arrangement.spacedBy(spacing),
-        content = content
-    )
+    // 画面を開くたびに番号を配り直し、部品が上から順に現れるようにする
+    val stagger = remember { StaggerState() }
+    CompositionLocalProvider(LocalStagger provides stagger) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(top = 12.dp, bottom = BottomBarSpace)
+                .navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(spacing),
+            content = content
+        )
+    }
+}
+
+private typealias ScreenKey = Triple<BottomTab, RecordMode, SettingsScreen>
+
+/**
+ * 画面の切り替えアニメーション。
+ *  - 設定の中で深い画面へ進む/戻る: 横にスライド
+ *  - 別のタブへ: タブの並び順に合わせて、少しだけ横にスライドしながらフェード
+ *  - 給油/整備の切り替え: 少し拡大しながらフェード
+ */
+private fun screenTransition(from: ScreenKey, to: ScreenKey): ContentTransform {
+    val tabDelta = to.first.ordinal - from.first.ordinal
+    val easing = FastOutSlowInEasing
+    return when {
+        tabDelta == 0 && to.third != from.third -> {
+            val forward = to.third.ordinal > from.third.ordinal
+            (slideInHorizontally(tween(340, easing = easing)) { if (forward) it / 3 else -it / 3 } + fadeIn(tween(260))) togetherWith
+                (slideOutHorizontally(tween(280, easing = easing)) { if (forward) -it / 4 else it / 4 } + fadeOut(tween(160)))
+        }
+        tabDelta != 0 -> {
+            val forward = tabDelta > 0
+            (slideInHorizontally(tween(320, easing = easing)) { if (forward) it / 8 else -it / 8 } + fadeIn(tween(260, delayMillis = 40))) togetherWith
+                (slideOutHorizontally(tween(220, easing = easing)) { if (forward) -it / 10 else it / 10 } + fadeOut(tween(140)))
+        }
+        else -> (fadeIn(tween(300, delayMillis = 40)) + scaleIn(tween(300, easing = easing), initialScale = 0.95f)) togetherWith
+            fadeOut(tween(140))
+    }
 }
 
 @Composable
@@ -432,9 +474,9 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                 onBackFromSubScreen = { settingsScreen = SettingsScreen.TOP }
             )
 
-            Crossfade(
+            AnimatedContent(
                 targetState = Triple(selectedTab, selectedRecordMode, settingsScreen),
-                animationSpec = tween(220),
+                transitionSpec = { screenTransition(initialState, targetState) },
                 modifier = Modifier.weight(1f),
                 label = "screen"
             ) { (tab, mode, subScreen) ->
@@ -746,6 +788,7 @@ private data class ToastVisuals(
 private fun GlassToast(message: String, isError: Boolean, actionLabel: String?, onAction: () -> Unit) {
     Row(
         modifier = Modifier
+            .popIn()
             .glass(RoundedCornerShape(22.dp), elevation = 16.dp)
             .padding(start = 18.dp, end = if (actionLabel != null) 8.dp else 18.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

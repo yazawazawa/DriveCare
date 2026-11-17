@@ -1,5 +1,10 @@
 package com.takumi.drivecare
 
+import com.takumi.drivecare.ui.glass.rememberTick
+import com.takumi.drivecare.ui.glass.animateFromZero
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -188,11 +193,18 @@ fun MaintenanceAddScreen(
 fun CheckRow(label: String, checked: Boolean, accent: Color, onToggle: () -> Unit) {
     val g = glass
     val iconColor by animateColorAsState(if (checked) accent else g.tertiaryLabel, label = "check")
+    // チェックを入れた瞬間に、アイコンがぽんと弾む
+    val iconScale by animateFloatAsState(
+        if (checked) 1f else 0.88f,
+        spring(dampingRatio = 0.35f, stiffness = 600f),
+        label = "checkScale"
+    )
+    val tick = rememberTick()
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 50.dp)
-            .clickable(onClick = onToggle)
+            .clickable(onClick = { tick(); onToggle() })
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -201,7 +213,7 @@ fun CheckRow(label: String, checked: Boolean, accent: Color, onToggle: () -> Uni
             if (checked) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
             contentDescription = if (checked) "選択済み" else "未選択",
             tint = iconColor,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale }
         )
         Text(
             label,
@@ -735,8 +747,9 @@ private fun MaintenanceStatusCard(status: ItemStatus, onClick: () -> Unit) {
                                 color = if (line.overdue) g.red else g.label
                             )
                         }
+                        val animatedProgress by animateFromZero(line.progress.coerceIn(0f, 1f), durationMillis = 900)
                         LinearProgressIndicator(
-                            progress = { line.progress.coerceIn(0f, 1f) },
+                            progress = { animatedProgress },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(6.dp),
