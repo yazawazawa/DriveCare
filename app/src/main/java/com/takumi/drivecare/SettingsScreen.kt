@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Factory
@@ -43,6 +44,8 @@ fun SettingsTopScreen(
     vehicleCount: Int,
     appVersion: String,
     onOpenVehicleManagement: () -> Unit,
+    cloudSummary: String,
+    onOpenCloud: () -> Unit,
     onCreateBackup: (password: String?, share: Boolean) -> Unit,
     onPickRestoreFile: () -> Unit
 ) {
@@ -89,6 +92,16 @@ fun SettingsTopScreen(
                 value = "${vehicleCount}台",
                 showChevron = true,
                 onClick = onOpenVehicleManagement
+            )
+            RowDivider()
+            GlassListRow(
+                title = "クラウド共有",
+                subtitle = "アカウント間でデータを共有",
+                icon = Icons.Rounded.CloudSync,
+                iconTint = g.teal,
+                value = cloudSummary,
+                showChevron = true,
+                onClick = onOpenCloud
             )
         }
 

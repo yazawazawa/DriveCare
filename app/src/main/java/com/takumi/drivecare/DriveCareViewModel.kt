@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import com.takumi.drivecare.cloud.CloudCoordinator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -27,11 +28,20 @@ data class DriveCareUiState(
 )
 
 class DriveCareViewModel(
-    private val repository: DriveCareRepository
+    private val repository: DriveCareRepository,
+    appContext: Context
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DriveCareUiState())
     val uiState: StateFlow<DriveCareUiState> = _uiState.asStateFlow()
+
+    /** アカウント間のクラウド共有。共有中は repository の取得元がクラウドに切り替わる。 */
+    val cloud = CloudCoordinator(appContext, repository, viewModelScope) { resetSelection ->
+        if (resetSelection) {
+            _uiState.value = _uiState.value.copy(selectedVehicleId = null, lastUsedVehicleId = null)
+        }
+        safeReload()
+    }
 
     init {
         viewModelScope.launch {
@@ -292,6 +302,11 @@ class DriveCareViewModel(
 
     /** 検証済みのバックアップで現在のデータをすべて置き換える。 */
     fun restoreBackup(context: Context, backup: BackupData, onDone: (Boolean) -> Unit) {
+        // 共有中に全置換すると、ほかのメンバーのデータも消えてしまうため行わない
+        if (repository.isCloudActive) {
+            onDone(false)
+            return
+        }
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
             val ok = try {
@@ -363,10 +378,11 @@ class DriveCareViewModel(
 }
 
 class DriveCareViewModelFactory(
-    private val repository: DriveCareRepository
+    private val repository: DriveCareRepository,
+    private val appContext: Context
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
-        return DriveCareViewModel(repository) as T
+        return DriveCareViewModel(repository, appContext) as T
     }
 }
