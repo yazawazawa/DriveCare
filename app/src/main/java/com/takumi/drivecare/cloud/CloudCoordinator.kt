@@ -8,6 +8,8 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.gms.tasks.Task
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -130,8 +132,22 @@ class CloudCoordinator(
                     val idToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
                     awaitOnline(auth.signInWithCredential(GoogleAuthProvider.getCredential(idToken, null)))
                     resolveExistingGroup()
-                } catch (_: GetCredentialCancellationException) {
-                    // ユーザーが取り消した
+                } catch (e: GetCredentialCancellationException) {
+                    // 本当に取り消した場合と、署名(SHA-1)の不一致などで Google 側が中断した場合の両方でここに来る。
+                    // 黙って戻ると原因が分からないため、必ず知らせる
+                    Log.w(TAG, "sign-in cancelled", e)
+                    _events.tryEmit(
+                        CloudEvent(
+                            "ログインが完了しませんでした。取り消していないのに戻る場合は、Firebase に登録した SHA-1 とこのアプリの署名が一致していない可能性があります",
+                            true
+                        )
+                    )
+                } catch (e: NoCredentialException) {
+                    Log.w(TAG, "no credential", e)
+                    _events.tryEmit(CloudEvent("この端末に Google アカウントが見つかりません。端末の設定でアカウントを追加してください", true))
+                } catch (e: GetCredentialException) {
+                    Log.e(TAG, "sign-in failed", e)
+                    _events.tryEmit(CloudEvent("ログインに失敗しました: ${e.message ?: e.type}", true))
                 }
             }
         }
