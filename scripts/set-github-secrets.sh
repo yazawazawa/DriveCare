@@ -8,7 +8,8 @@
 #   1. GitHub CLI を入れてログインしておく:  https://cli.github.com/  →  gh auth login
 #   2. bash scripts/set-github-secrets.sh
 #
-# 値はこの PC から GitHub へ直接送られ、画面には表示されない。Windows では Git Bash で実行する。
+# 値はこの PC から GitHub へ直接送られ、画面には表示されない。
+# Windows の PowerShell では、代わりに scripts\set-github-secrets.ps1 を使う（PowerShell の bash は WSL を呼び出して失敗することがある）。
 set -euo pipefail
 
 REPO="${1:-yazawazawa/DriveCare}"
