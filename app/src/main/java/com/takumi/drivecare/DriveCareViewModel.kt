@@ -9,7 +9,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val TAG = "DriveCareViewModel"
 
@@ -248,81 +250,71 @@ class DriveCareViewModel(
         }
     }
 
-    fun exportBackup(context: Context, onDone: (Result<String>) -> Unit) {
-        launchSafe {
-            try {
-                val file = BackupUtils.exportToLocalFile(
-                    context = context,
-                    vehicles = _uiState.value.vehicles,
-                    fuelRecords = _uiState.value.fuelRecords,
-                    maintenanceRecords = _uiState.value.maintenanceRecords
-                )
-                BackupUtils.shareBackupFile(context, file)
-                onDone(Result.success(file.absolutePath))
-            } catch (e: Exception) {
-                Log.e(TAG, "Export failed", e)
-                onDone(Result.failure(e))
-            }
-        }
-    }
-
-    /** バックアップをデバイスの外部ストレージ（Documents）に保存する */
-    fun saveBackupToDevice(context: Context, onDone: (Result<String>) -> Unit) {
-        launchSafe {
-            try {
-                val file = BackupUtils.saveToExternalStorage(
-                    context = context,
-                    vehicles = _uiState.value.vehicles,
-                    fuelRecords = _uiState.value.fuelRecords,
-                    maintenanceRecords = _uiState.value.maintenanceRecords
-                )
-                if (file != null) {
-                    onDone(Result.success(file.name))
-                } else {
-                    onDone(Result.failure(Exception("保存先を取得できませんでした")))
+    /**
+     * バックアップを作成する。[share] が true なら共有シート、false なら Documents/DriveCare に保存。
+     * 成功時は保存先（共有の場合はファイル名）を返す。
+     */
+    fun createBackup(context: Context, password: String?, share: Boolean, onDone: (Result<String>) -> Unit) {
+        val state = _uiState.value
+        viewModelScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val data = BackupUtils.buildBackupData(context, state.vehicles, state.fuelRecords, state.maintenanceRecords)
+                    val bytes = BackupCodec.encode(data, password)
+                    val name = BackupUtils.backupFileName()
+                    if (share) {
+                        name to bytes
+                    } else {
+                        BackupUtils.saveToDevice(context, bytes, name) to bytes
+                    }
                 }
+            }.onFailure { Log.e(TAG, "Backup failed", it) }
+            result.onSuccess { (label, bytes) ->
+                if (share) {
+                    runCatching { BackupUtils.share(context, bytes, label) }
+                        .onFailure { Log.e(TAG, "Share failed", it); onDone(Result.failure(it)); return@launch }
+                }
+            }
+            onDone(result.map { it.first })
+        }
+    }
+
+    /** 選択したバックアップファイルを読み込んで中身を検証する（まだ DB には反映しない）。 */
+    fun readBackup(context: Context, uri: Uri, password: String?, onDone: (BackupReadResult) -> Unit) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val bytes = BackupUtils.readBytes(context, uri)
+                if (bytes == null) BackupReadResult.Invalid else BackupCodec.decode(bytes, password)
+            }
+            onDone(result)
+        }
+    }
+
+    /** 検証済みのバックアップで現在のデータをすべて置き換える。 */
+    fun restoreBackup(context: Context, backup: BackupData, onDone: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true)
+            val ok = try {
+                applyBackupData(context, backup)
+                true
             } catch (e: Exception) {
-                Log.e(TAG, "Save to device failed", e)
-                onDone(Result.failure(e))
+                Log.e(TAG, "Restore failed", e)
+                _uiState.value = _uiState.value.copy(isLoading = false)
+                false
             }
-        }
-    }
-
-    /** 同端末の固定パスからバックアップを復元する */
-    fun importBackup(context: Context, onDone: (Boolean) -> Unit) {
-        launchSafe {
-            val backup = BackupUtils.importFromLocalFile(context)
-            if (backup == null) {
-                onDone(false)
-                return@launchSafe
-            }
-            applyBackupData(backup)
-            onDone(true)
-        }
-    }
-
-    /** ファイルピッカーで選択した URI からバックアップを読み込む（他端末共有対応） */
-    fun importBackupFromUri(context: Context, uri: Uri, onDone: (Boolean) -> Unit) {
-        launchSafe {
-            val backup = BackupUtils.importFromUri(context, uri)
-            if (backup == null) {
-                onDone(false)
-                return@launchSafe
-            }
-            applyBackupData(backup)
-            onDone(true)
+            onDone(ok)
         }
     }
 
     /** BackupData を DB に反映して画面を更新する共通処理 */
-    private suspend fun applyBackupData(backup: BackupData) {
+    private suspend fun applyBackupData(context: Context, backup: BackupData) {
         val vehicles = backup.vehicles.map {
             Vehicle(
                 id = it.id,
                 maker = it.maker,
                 model = it.model,
                 tankCapacity = it.tankCapacity,
-                fuelType = FuelType.valueOf(it.fuelType)
+                fuelType = runCatching { FuelType.valueOf(it.fuelType) }.getOrDefault(FuelType.REGULAR)
             )
         }
         val fuelRecords = backup.fuelRecords.map {
@@ -354,7 +346,18 @@ class DriveCareViewModel(
                 customItemsDone = it.customItemsDone
             )
         }
+        // 整備項目の定義（間隔・カスタム項目）も復元する。現在の定義は破棄し、
+        // バックアップに無い車両は初回アクセス時にデフォルトが作られる。
+        _uiState.value.vehicles.forEach { MaintenanceItemDefRepository.removeVehicle(context, it.id) }
+        backup.maintenanceItemDefs.forEach { (vehicleId, defs) ->
+            val id = vehicleId.toIntOrNull() ?: return@forEach
+            if (vehicles.any { it.id == id } && defs.isNotEmpty()) {
+                MaintenanceItemDefRepository.saveItemDefs(context, id, defs)
+            }
+        }
         repository.replaceAllData(vehicles, fuelRecords, maintenanceRecords)
+        // 復元前の選択状態は無効になりうるのでリセットして最新の車両を選び直す
+        _uiState.value = _uiState.value.copy(selectedVehicleId = null, lastUsedVehicleId = null)
         safeReload()
     }
 }

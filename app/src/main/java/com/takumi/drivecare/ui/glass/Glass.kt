@@ -75,6 +75,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -531,7 +532,8 @@ fun GlassInputRow(
     imeAction: ImeAction = ImeAction.Next,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     singleLine: Boolean = true,
-    textAlign: TextAlign = TextAlign.End
+    textAlign: TextAlign = TextAlign.End,
+    visualTransformation: VisualTransformation = VisualTransformation.None
 ) {
     val g = glass
     val focusRequester = remember { FocusRequester() }
@@ -563,6 +565,7 @@ fun GlassInputRow(
                 fontWeight = FontWeight.Medium
             ),
             singleLine = singleLine,
+            visualTransformation = visualTransformation,
             keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
             keyboardActions = keyboardActions,
             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),

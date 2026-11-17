@@ -10,9 +10,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Factory
-import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.IosShare
 import androidx.compose.material.icons.rounded.LocalGasStation
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Shield
@@ -45,25 +43,21 @@ fun SettingsTopScreen(
     vehicleCount: Int,
     appVersion: String,
     onOpenVehicleManagement: () -> Unit,
-    onExportBackup: () -> Unit,
-    onSaveToDevice: () -> Unit,
-    onImportBackup: () -> Unit,
-    onPickAndImportBackup: () -> Unit
+    onCreateBackup: (password: String?, share: Boolean) -> Unit,
+    onPickRestoreFile: () -> Unit
 ) {
     val g = glass
 
-    data class ConfirmAction(val title: String, val message: String, val label: String, val destructive: Boolean, val action: () -> Unit)
-    var pendingAction by remember { mutableStateOf<ConfirmAction?>(null) }
     var showNotices by remember { mutableStateOf(false) }
+    var showCreateBackup by remember { mutableStateOf(false) }
 
-    pendingAction?.let { confirm ->
-        ConfirmDialog(
-            title = confirm.title,
-            message = confirm.message,
-            confirmLabel = confirm.label,
-            destructive = confirm.destructive,
-            onConfirm = confirm.action,
-            onDismiss = { pendingAction = null }
+    if (showCreateBackup) {
+        BackupCreateDialog(
+            onDismiss = { showCreateBackup = false },
+            onCreate = { password, share ->
+                showCreateBackup = false
+                onCreateBackup(password, share)
+            }
         )
     }
     if (showNotices) {
@@ -100,62 +94,24 @@ fun SettingsTopScreen(
 
         GlassSection(
             header = "バックアップ",
-            footer = "復元すると、現在のデータはすべてバックアップの内容に置き換わります。"
+            footer = "端末への保存先は「ドキュメント > DriveCare」フォルダです。アプリを削除しても残ります。"
         ) {
             GlassListRow(
-                title = "バックアップを共有",
-                subtitle = "ほかのアプリやクラウドへ送る",
-                icon = Icons.Rounded.IosShare,
-                iconTint = g.blue,
-                onClick = {
-                    pendingAction = ConfirmAction(
-                        "バックアップを共有",
-                        "現在のデータを JSON ファイルに書き出して共有します。",
-                        "共有", false, onExportBackup
-                    )
-                }
-            )
-            RowDivider()
-            GlassListRow(
-                title = "この端末に保存",
-                subtitle = "Documents フォルダに保存",
+                title = "バックアップを作成",
+                subtitle = "端末に保存、またはほかのアプリへ共有",
                 icon = Icons.Rounded.Download,
                 iconTint = g.green,
-                onClick = {
-                    pendingAction = ConfirmAction(
-                        "この端末に保存",
-                        "現在のデータを端末の Documents フォルダに保存します。",
-                        "保存", false, onSaveToDevice
-                    )
-                }
+                showChevron = true,
+                onClick = { showCreateBackup = true }
             )
             RowDivider()
             GlassListRow(
                 title = "バックアップから復元",
-                subtitle = "この端末で保存したファイル",
+                subtitle = "保存したファイルを選んで読み込む",
                 icon = Icons.Rounded.Restore,
                 iconTint = g.orange,
-                onClick = {
-                    pendingAction = ConfirmAction(
-                        "バックアップから復元",
-                        "この端末に保存したバックアップを読み込みます。現在のデータはすべて上書きされます。",
-                        "復元", true, onImportBackup
-                    )
-                }
-            )
-            RowDivider()
-            GlassListRow(
-                title = "ファイルを選んで復元",
-                subtitle = "他の端末や Google ドライブから",
-                icon = Icons.Rounded.FolderOpen,
-                iconTint = g.purple,
-                onClick = {
-                    pendingAction = ConfirmAction(
-                        "ファイルを選んで復元",
-                        "選択したバックアップファイルを読み込みます。現在のデータはすべて上書きされます。",
-                        "ファイルを選択", true, onPickAndImportBackup
-                    )
-                }
+                showChevron = true,
+                onClick = onPickRestoreFile
             )
         }
 

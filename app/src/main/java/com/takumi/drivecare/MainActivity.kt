@@ -266,15 +266,11 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
         }
     }
 
+    // 復元するファイルを選ぶ（拡張子は独自のため種類は絞らない）。選択後の処理は RestoreFlow が担当する
+    var restoreUri by remember { mutableStateOf<Uri?>(null) }
     val pickBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.importBackupFromUri(context, uri) { success ->
-                showMessage(if (success) "バックアップを読み込みました" else "読み込みに失敗しました", !success)
-            }
-        }
-    }
+    ) { uri: Uri? -> if (uri != null) restoreUri = uri }
 
     val selectedVehicleRecords = uiState.fuelRecords
         .filter { it.vehicleId == uiState.selectedVehicleId }
@@ -523,22 +519,18 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                             vehicleCount = uiState.vehicles.size,
                             appVersion = BuildConfig.VERSION_NAME,
                             onOpenVehicleManagement = { settingsScreen = SettingsScreen.VEHICLE_MANAGEMENT },
-                            onExportBackup = {
-                                viewModel.exportBackup(context) { result ->
-                                    showMessage(result.fold({ "バックアップを共有しました" }, { "エクスポートに失敗しました" }), result.isFailure)
+                            onCreateBackup = { password, share ->
+                                viewModel.createBackup(context, password, share) { result ->
+                                    showMessage(
+                                        result.fold(
+                                            { where -> if (share) "バックアップを共有しました" else "保存しました: $where" },
+                                            { "バックアップの作成に失敗しました" }
+                                        ),
+                                        result.isFailure
+                                    )
                                 }
                             },
-                            onSaveToDevice = {
-                                viewModel.saveBackupToDevice(context) { result ->
-                                    showMessage(result.fold({ name -> "端末に保存しました: $name" }, { "保存に失敗しました" }), result.isFailure)
-                                }
-                            },
-                            onImportBackup = {
-                                viewModel.importBackup(context) { success ->
-                                    showMessage(if (success) "バックアップを復元しました" else "バックアップファイルが見つかりません", !success)
-                                }
-                            },
-                            onPickAndImportBackup = { pickBackupLauncher.launch("application/json") }
+                            onPickRestoreFile = { pickBackupLauncher.launch("*/*") }
                         )
 
                         SettingsScreen.VEHICLE_MANAGEMENT -> VehicleManagementScreen(
@@ -555,6 +547,19 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                     }
                 }
             }
+        }
+
+        // ── バックアップ復元の確認フロー ──────────────────────────────────────
+        restoreUri?.let { uri ->
+            RestoreFlow(
+                uri = uri,
+                readBackup = { password, onResult -> viewModel.readBackup(context, uri, password, onResult) },
+                restore = { data, onDone -> viewModel.restoreBackup(context, data, onDone) },
+                onFinished = { message, isError ->
+                    restoreUri = null
+                    if (message != null) showMessage(message, isError)
+                }
+            )
         }
 
         // ── フローティング タブバー ───────────────────────────────────────────
