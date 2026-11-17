@@ -49,8 +49,12 @@ class OperationHistory(context: Context) {
     /** 新しい順。 */
     val entries: StateFlow<List<HistoryEntry>> = _entries.asStateFlow()
 
-    fun add(entry: HistoryEntry) {
-        save((listOf(entry) + _entries.value).take(MAX_ENTRIES))
+    /** 履歴に追加する。同じミリ秒に複数の操作があっても ID が重ならないようにする。 */
+    fun add(entry: HistoryEntry): HistoryEntry {
+        val latest = _entries.value.firstOrNull()?.id ?: 0L
+        val unique = if (entry.id > latest) entry else entry.copy(id = latest + 1)
+        save((listOf(unique) + _entries.value).take(MAX_ENTRIES))
+        return unique
     }
 
     fun remove(id: Long) {
