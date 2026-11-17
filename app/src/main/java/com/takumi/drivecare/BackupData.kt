@@ -44,5 +44,9 @@ data class BackupMaintenanceRecord(
 data class BackupData(
     val vehicles: List<BackupVehicle>,
     val fuelRecords: List<BackupFuelRecord>,
-    val maintenanceRecords: List<BackupMaintenanceRecord> = emptyList()
+    val maintenanceRecords: List<BackupMaintenanceRecord> = emptyList(),
+    /** 車両ID(文字列) → 整備項目の定義（間隔・カスタム項目）。旧バックアップには無い。 */
+    val maintenanceItemDefs: Map<String, List<MaintenanceItemDef>> = emptyMap(),
+    /** バックアップ形式のバージョン。 */
+    val version: Int = 2
 )

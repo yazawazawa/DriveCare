@@ -1,118 +1,102 @@
 package com.takumi.drivecare
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
+/** バックアップの作成（端末へ保存 / 共有）と読み込みを担当する。 */
 object BackupUtils {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    /** 端末内の保存先フォルダ名（Documents/DriveCare）。 */
+    const val FOLDER_NAME = "DriveCare"
 
-    private fun buildBackupData(
+    fun buildBackupData(
+        context: Context,
         vehicles: List<Vehicle>,
         fuelRecords: List<FuelRecord>,
         maintenanceRecords: List<MaintenanceRecord>
     ): BackupData = BackupData(
         vehicles = vehicles.map { BackupVehicle(it.id, it.maker, it.model, it.tankCapacity, it.fuelType.name) },
-        fuelRecords = fuelRecords.map { BackupFuelRecord(it.id, it.vehicleId, it.odometer, it.liters, it.price, it.unitPrice, it.isFullTank, it.timestamp) },
-        maintenanceRecords = maintenanceRecords.map { BackupMaintenanceRecord(it.id, it.vehicleId, it.timestamp, it.odometer, it.carWashDone, it.engineOilDone, it.oilElementDone, it.wiperDone, it.tireDone, it.airCleanerCleaningDone, it.airCleanerReplacementDone, it.comment, it.customItemsDone) }
+        fuelRecords = fuelRecords.map {
+            BackupFuelRecord(it.id, it.vehicleId, it.odometer, it.liters, it.price, it.unitPrice, it.isFullTank, it.timestamp)
+        },
+        maintenanceRecords = maintenanceRecords.map {
+            BackupMaintenanceRecord(
+                it.id, it.vehicleId, it.timestamp, it.odometer, it.carWashDone, it.engineOilDone,
+                it.oilElementDone, it.wiperDone, it.tireDone, it.airCleanerCleaningDone,
+                it.airCleanerReplacementDone, it.comment, it.customItemsDone
+            )
+        },
+        maintenanceItemDefs = vehicles.associate { v ->
+            v.id.toString() to MaintenanceItemDefRepository.getItemDefs(context, v.id)
+        }
     )
 
-    private fun backupFileName(): String {
-        val date = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.JAPAN).format(Date())
-        return "drivecare_backup_$date.json"
+    /** 例: DriveCare_2026-11-17_153045.dcbak */
+    fun backupFileName(now: Date = Date()): String {
+        val stamp = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.JAPAN).format(now)
+        return "DriveCare_$stamp.${BackupCodec.EXTENSION}"
     }
 
     /**
-     * 内部ストレージ（filesDir）にバックアップを書き出す。
-     * [shareBackupFile] でシェアシートへ渡す用。
+     * Documents/DriveCare/ にバックアップを保存し、ユーザーに見せる保存先の文字列を返す。
+     *
+     * Android 10 以降は MediaStore で共有ストレージに書くため、アプリをアンインストールしても残る
+     * （アプリ専用領域だとアンインストールで一緒に消えてしまう）。
+     * Android 9 以前は権限なしで書ける範囲のアプリ専用の Documents に保存する。
      */
-    fun exportToLocalFile(
-        context: Context,
-        vehicles: List<Vehicle>,
-        fuelRecords: List<FuelRecord>,
-        maintenanceRecords: List<MaintenanceRecord>
-    ): File {
-        val text = json.encodeToString(buildBackupData(vehicles, fuelRecords, maintenanceRecords))
-        val file = File(context.filesDir, "drivecare_backup.json")
-        file.writeText(text)
-        return file
+    fun saveToDevice(context: Context, bytes: ByteArray, fileName: String): String {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOCUMENTS}/$FOLDER_NAME")
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
+                ?: throw IllegalStateException("保存先を作成できませんでした")
+            try {
+                resolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    ?: throw IllegalStateException("保存先を開けませんでした")
+                resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            } catch (e: Exception) {
+                resolver.delete(uri, null, null)
+                throw e
+            }
+            return "${Environment.DIRECTORY_DOCUMENTS}/$FOLDER_NAME/$fileName"
+        }
+        val base = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+            ?: throw IllegalStateException("保存先を取得できませんでした")
+        val dir = File(base, FOLDER_NAME).apply { mkdirs() }
+        File(dir, fileName).writeBytes(bytes)
+        return "Android/data/${context.packageName}/files/${Environment.DIRECTORY_DOCUMENTS}/$FOLDER_NAME/$fileName"
     }
 
-    /**
-     * Downloads フォルダ（端末内の一般公開領域）にバックアップを保存する。
-     * Android 10+ では MediaStore を使うのが正しいが、
-     * getExternalFilesDir は MediaStore 不要・READ_EXTERNAL_STORAGE 不要で安全。
-     * ユーザーは Files アプリや PC 接続でアクセス可能。
-     */
-    fun saveToExternalStorage(
-        context: Context,
-        vehicles: List<Vehicle>,
-        fuelRecords: List<FuelRecord>,
-        maintenanceRecords: List<MaintenanceRecord>
-    ): File? {
-        return runCatching {
-            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
-                ?: return null
-            dir.mkdirs()
-            val file = File(dir, backupFileName())
-            val text = json.encodeToString(buildBackupData(vehicles, fuelRecords, maintenanceRecords))
-            file.writeText(text)
-            file
-        }.getOrNull()
-    }
-
-    /**
-     * FileProvider 経由でシェアシートを起動する。
-     */
-    fun shareBackupFile(context: Context, file: File) {
+    /** 共有シート用に一時ファイルへ書き出して共有する。古い一時ファイルは削除する。 */
+    fun share(context: Context, bytes: ByteArray, fileName: String) {
+        val dir = File(context.filesDir, "share").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val file = File(dir, fileName).apply { writeBytes(bytes) }
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/json"
+            type = "application/octet-stream"
             putExtra(Intent.EXTRA_STREAM, uri)
             putExtra(Intent.EXTRA_SUBJECT, "DriveCare バックアップ")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        context.startActivity(Intent.createChooser(intent, "バックアップを共有"))
+        context.startActivity(Intent.createChooser(intent, "バックアップを共有").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
-    /**
-     * 同端末に保存されたバックアップを読み込む。
-     * 「バックアップをシェア」（filesDir）と「この端末に保存」（Documents）の
-     * 両方の保存先を見て、最も新しいファイルを復元対象にする。
-     */
-    fun importFromLocalFile(context: Context): BackupData? {
-        val shareFile = File(context.filesDir, "drivecare_backup.json").takeIf { it.exists() }
-        val savedFile = listLocalBackups(context).firstOrNull()
-        val file = listOfNotNull(shareFile, savedFile).maxByOrNull { it.lastModified() } ?: return null
-        return runCatching { json.decodeFromString<BackupData>(file.readText()) }.getOrNull()
-    }
-
-    /** ファイルピッカーで選択した URI からバックアップを読み込む */
-    fun importFromUri(context: Context, uri: Uri): BackupData? {
-        return runCatching {
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                json.decodeFromString<BackupData>(stream.bufferedReader().readText())
-            }
-        }.getOrNull()
-    }
-
-    /**
-     * 端末内に保存されたバックアップ一覧を返す（getExternalFilesDir/Documents 内）。
-     */
-    fun listLocalBackups(context: Context): List<File> {
-        val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS) ?: return emptyList()
-        return (dir.listFiles() ?: emptyArray())
-            .filter { it.name.startsWith("drivecare_backup_") && it.name.endsWith(".json") }
-            .sortedByDescending { it.lastModified() }
-    }
+    /** ファイルピッカーで選んだ URI の中身を読み込む。 */
+    fun readBytes(context: Context, uri: Uri): ByteArray? =
+        runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
 }
