@@ -20,8 +20,8 @@ android {
         applicationId = "com.takumi.drivecare"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.0.1b"
+        versionCode = 4
+        versionName = "0.0.1c"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

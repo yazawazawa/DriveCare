@@ -50,6 +50,13 @@ class DriveCareViewModel(
     private val _undoPrompts = MutableSharedFlow<UndoPrompt>(extraBufferCapacity = 4, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val undoPrompts: SharedFlow<UndoPrompt> = _undoPrompts.asSharedFlow()
 
+    /**
+     * 画面用データの読み直しは1つずつ行う（遅れて終わった古い結果で上書きしないため）。
+     * 注意: init ブロックが起動直後に読み込みを実行するため、必ず init より前で初期化すること
+     * （後ろに置くと、起動時に未初期化のまま使われて落ちる）。
+     */
+    private val reloadMutex = Mutex()
+
     /** アカウント間のクラウド共有。共有中は repository の取得元がクラウドに切り替わる。 */
     val cloud = CloudCoordinator(appContext, repository, viewModelScope) { resetSelection ->
         if (resetSelection) {
@@ -90,9 +97,6 @@ class DriveCareViewModel(
             _uiState.value = _uiState.value.copy(isLoading = false)
         }
     }
-
-    /** 画面用データの読み直しは1つずつ行う（遅れて終わった古い結果で上書きしないため）。 */
-    private val reloadMutex = Mutex()
 
     private suspend fun safeReload() = reloadMutex.withLock {
         val vehicles = repository.getAllVehicles()
