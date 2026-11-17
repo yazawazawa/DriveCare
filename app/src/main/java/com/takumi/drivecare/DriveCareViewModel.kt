@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 private const val TAG = "DriveCareViewModel"
@@ -89,7 +91,10 @@ class DriveCareViewModel(
         }
     }
 
-    private suspend fun safeReload() {
+    /** 画面用データの読み直しは1つずつ行う（遅れて終わった古い結果で上書きしないため）。 */
+    private val reloadMutex = Mutex()
+
+    private suspend fun safeReload() = reloadMutex.withLock {
         val vehicles = repository.getAllVehicles()
         val records = repository.getAllFuelRecords()
         val maintenanceRecords = repository.getAllMaintenanceRecords()
@@ -317,8 +322,8 @@ class DriveCareViewModel(
     ) {
         val now = System.currentTimeMillis()
         val entry = HistoryEntry(now, now, type.name, "${type.label} · $detail", vehicle, fuel, maintenance, itemDefsJson)
-        history.add(entry)
-        _undoPrompts.tryEmit(UndoPrompt(entry.id, message))
+        val saved = history.add(entry)
+        _undoPrompts.tryEmit(UndoPrompt(saved.id, message))
     }
 
     /** 履歴の操作を元に戻す。結果（成否とメッセージ）を [onDone] に返す。 */

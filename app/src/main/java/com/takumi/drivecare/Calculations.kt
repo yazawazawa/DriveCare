@@ -19,26 +19,42 @@ data class FuelRecordStats(
 )
 
 /**
+ * 同一車両の給油記録（時刻の昇順）について、満タン法の燃費を計算する。戻り値は 記録ID → km/L。
+ *
+ * 燃費 = 直前の満タン記録からの走行距離 ÷ その間に給油した合計量。
+ * 間に満タンでない給油が挟まっている場合は、その給油量も消費量に含める
+ * （含めないと、部分給油の分だけ燃費が実際より良く出てしまう）。
+ */
+fun efficiencyByRecord(sortedAsc: List<FuelRecord>): Map<Int, Double> {
+    val result = HashMap<Int, Double>()
+    var lastFull: FuelRecord? = null
+    var litersSinceFull = 0.0
+    for (r in sortedAsc) {
+        if (lastFull != null) litersSinceFull += r.liters
+        if (r.isFullTank) {
+            val prev = lastFull
+            if (prev != null) {
+                val distance = r.odometer - prev.odometer
+                if (distance > 0 && litersSinceFull > 0) result[r.id] = distance / litersSinceFull
+            }
+            lastFull = r
+            litersSinceFull = 0.0
+        }
+    }
+    return result
+}
+
+/**
  * 同一車両の給油記録について、各記録の「前回からの走行距離」と「燃費」を一括で計算する。
- * 燃費は満タン法: 直前の満タン記録からの距離 ÷ 今回の給油量（今回も満タン時のみ）。
  */
 fun computeFuelStats(records: List<FuelRecord>): Map<Int, FuelRecordStats> {
     val result = HashMap<Int, FuelRecordStats>(records.size)
     records.groupBy { it.vehicleId }.forEach { (_, list) ->
         val sorted = list.sortedBy { it.timestamp }
-        var lastFull: FuelRecord? = null
+        val efficiency = efficiencyByRecord(sorted)
         sorted.forEachIndexed { i, current ->
-            val distance = if (i > 0) {
-                (current.odometer - sorted[i - 1].odometer).takeIf { it >= 0 }
-            } else null
-            val efficiency = if (current.isFullTank) {
-                lastFull?.let { prev ->
-                    val d = current.odometer - prev.odometer
-                    if (d > 0 && current.liters > 0) d / current.liters else null
-                }
-            } else null
-            result[current.id] = FuelRecordStats(distance, efficiency)
-            if (current.isFullTank) lastFull = current
+            val distance = if (i > 0) (current.odometer - sorted[i - 1].odometer).takeIf { it >= 0 } else null
+            result[current.id] = FuelRecordStats(distance, efficiency[current.id])
         }
     }
     return result

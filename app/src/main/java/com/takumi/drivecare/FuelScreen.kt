@@ -946,25 +946,11 @@ fun buildDistanceSeriesRaw(records: List<FuelRecord>): List<Pair<Long, Double>> 
     return result
 }
 
-/** 満タン給油間の燃費の (timestamp, 燃費) 系列。 */
+/** 満タン給油間の燃費の (timestamp, 燃費) 系列。部分給油の量も消費量に含める（[efficiencyByRecord] 参照）。 */
 fun buildEfficiencySeriesRaw(records: List<FuelRecord>): List<Pair<Long, Double>> {
     val sorted = records.sortedBy { it.timestamp }
-    val result = mutableListOf<Pair<Long, Double>>()
-    for (i in sorted.indices) {
-        val current = sorted[i]
-        if (!current.isFullTank) continue
-        for (j in i - 1 downTo 0) {
-            val previous = sorted[j]
-            if (previous.isFullTank) {
-                val distance = current.odometer - previous.odometer
-                if (distance > 0 && current.liters > 0) {
-                    result.add(current.timestamp to (distance / current.liters))
-                }
-                break
-            }
-        }
-    }
-    return result
+    val efficiency = efficiencyByRecord(sorted)
+    return sorted.mapNotNull { r -> efficiency[r.id]?.let { r.timestamp to it } }
 }
 
 /**

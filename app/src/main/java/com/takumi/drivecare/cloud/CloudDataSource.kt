@@ -146,8 +146,17 @@ class CloudDataSource(
     // ── 読み取り ─────────────────────────────────────────────────────────
 
     override suspend fun getAllVehicles(): List<Vehicle> { awaitReady(); return vehicles.map { it.value } }
-    override suspend fun getAllFuelRecords(): List<FuelRecord> { awaitReady(); return fuel.map { it.value } }
-    override suspend fun getAllMaintenanceRecords(): List<MaintenanceRecord> { awaitReady(); return maint.map { it.value } }
+    // 他のメンバーが車両を削除した直後などに残った、持ち主のいない記録は表示しない
+    override suspend fun getAllFuelRecords(): List<FuelRecord> {
+        awaitReady()
+        val ids = vehicles.mapTo(HashSet()) { it.value.id }
+        return fuel.map { it.value }.filter { it.vehicleId in ids }
+    }
+    override suspend fun getAllMaintenanceRecords(): List<MaintenanceRecord> {
+        awaitReady()
+        val ids = vehicles.mapTo(HashSet()) { it.value.id }
+        return maint.map { it.value }.filter { it.vehicleId in ids }
+    }
 
     /** 現在キャッシュされているデータ一式（共有を終えるときに端末へコピーする用）。 */
     suspend fun snapshotAll(): LocalData {
