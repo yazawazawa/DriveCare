@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Factory
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LocalGasStation
@@ -44,6 +45,8 @@ fun SettingsTopScreen(
     vehicleCount: Int,
     appVersion: String,
     onOpenVehicleManagement: () -> Unit,
+    historyCount: Int,
+    onOpenHistory: () -> Unit,
     cloudSummary: String,
     onOpenCloud: () -> Unit,
     onCreateBackup: (password: String?, share: Boolean) -> Unit,
@@ -102,6 +105,18 @@ fun SettingsTopScreen(
                 value = cloudSummary,
                 showChevron = true,
                 onClick = onOpenCloud
+            )
+        }
+
+        GlassSection(footer = "削除や編集を、直近10件まで元に戻せます。") {
+            GlassListRow(
+                title = "操作履歴",
+                subtitle = "間違えて消したときはここから戻せます",
+                icon = Icons.Rounded.History,
+                iconTint = g.purple,
+                value = if (historyCount == 0) "なし" else "${historyCount}件",
+                showChevron = true,
+                onClick = onOpenHistory
             )
         }
 
