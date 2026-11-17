@@ -37,3 +37,25 @@ Android Studio で Sync → Run。設定 > クラウド共有 から「Google �
 
 ## 費用の目安
 Spark プラン（無料）の無料枠は、1日あたり読み取り5万件・書き込み2万件です。個人〜家族での利用では通常十分です。
+
+## トラブルシューティング
+
+### 「Google でログイン」を押すと、すぐ元の画面に戻る
+たいてい、**Firebase に登録した SHA-1 と、インストールしたアプリの署名が一致していません**
+（デバッグビルドは、ビルドした PC や CI の署名キーによって SHA-1 が変わります）。
+
+1. **いま入っているアプリの SHA-1 を調べる**（APK ファイルを使います。`keytool` は Android Studio 同梱のものでも構いません）。
+
+```powershell
+& "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -printcert -jarfile DriveCare-0.0.1c.apk
+```
+
+   出力の `SHA1:` の行が、そのアプリの署名です。
+
+2. Firebase コンソール > プロジェクトの設定 > 全般 > Android アプリ > 「SHA 証明書フィンガープリント」に、**同じ値が登録されているか**確認する。無ければ追加する。
+3. 追加したら `google-services.json` をダウンロードし直し、`app/` の中身と GitHub の Secrets（`GOOGLE_SERVICES_JSON_BASE64`）を更新する。
+4. 反映まで数分かかることがあります。アプリを一度終了してから、もう一度試してください。
+
+### その他
+- 「この端末に Google アカウントが見つかりません」: 端末の設定で Google アカウントを追加する。
+- 「クラウド共有は未設定です」: `google-services.json` が入っていない、または Google ログインを有効にする前にダウンロードした古いファイル（`oauth_client` が空）です。Authentication で Google を有効にしてから、ダウンロードし直す。
