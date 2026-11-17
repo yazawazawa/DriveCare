@@ -2,46 +2,43 @@ package com.takumi.drivecare.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// ── DriveCare 白ベースクリーンパレット ───────────────────────────────────
-// Primary: 深みのあるインディゴ（アクセント）
-val Brand900 = Color(0xFF1A1060)
-val Brand800 = Color(0xFF241880)
-val Brand700 = Color(0xFF3629A8)
-val Brand600 = Color(0xFF4B3DC8)   // ライト用プライマリ
-val Brand500 = Color(0xFF6457D8)
-val Brand400 = Color(0xFF897EE5)
-val Brand300 = Color(0xFFB4AEF0)
-val Brand200 = Color(0xFFD8D5F8)
-val Brand100 = Color(0xFFECEBFB)
-val Brand50  = Color(0xFFF6F5FE)
+// ── DriveCare "Liquid Glass" パレット ─────────────────────────────────────
+// iOS のシステムカラーに近い、彩度の高いアクセントと控えめなニュートラル。
 
-// Fuel Teal（給油・エネルギー）
-val Teal600 = Color(0xFF0F766E)
-val Teal500 = Color(0xFF0D9488)
-val Teal400 = Color(0xFF2DD4BF)
-val Teal100 = Color(0xFFCCFBF1)
-val Teal50  = Color(0xFFF0FDFA)
+// アクセント（ライト）
+val SystemBlue   = Color(0xFF007AFF)
+val SystemOrange = Color(0xFFFF9500)
+val SystemGreen  = Color(0xFF34C759)
+val SystemRed    = Color(0xFFFF3B30)
+val SystemPurple = Color(0xFFAF52DE)
+val SystemTeal   = Color(0xFF30B0C7)
+val SystemIndigo = Color(0xFF5856D6)
+val SystemYellow = Color(0xFFFFCC00)
+val SystemPink   = Color(0xFFFF2D55)
+val SystemAmber  = Color(0xFFFF9F0A)
 
-// Amber（燃費・コスト）
-val Amber600 = Color(0xFFD97706)
-val Amber500 = Color(0xFFF59E0B)
-val Amber400 = Color(0xFFFBBF24)
-val Amber100 = Color(0xFFFEF3C7)
-val Amber50  = Color(0xFFFFFBEB)
+// アクセント（ダーク）
+val SystemBlueDark   = Color(0xFF0A84FF)
+val SystemOrangeDark = Color(0xFFFF9F0A)
+val SystemGreenDark  = Color(0xFF30D158)
+val SystemRedDark    = Color(0xFFFF453A)
+val SystemPurpleDark = Color(0xFFBF5AF2)
+val SystemTealDark   = Color(0xFF40C8E0)
+val SystemIndigoDark = Color(0xFF5E5CE6)
 
-// Rose（整備・メンテ）
-val Rose600 = Color(0xFFE11D48)
-val Rose500 = Color(0xFFF43F5E)
-val Rose400 = Color(0xFFFB7185)
-val Rose100 = Color(0xFFFFE4E6)
-val Rose50  = Color(0xFFFFF1F2)
+// ニュートラル（ライト）
+val LightGroupedBackground = Color(0xFFF2F2F7)
+val LightLabel             = Color(0xFF0B0B0F)
+val LightSecondaryLabel    = Color(0xFF6C6C72)
+val LightTertiaryLabel     = Color(0xFFAEAEB2)
+val LightSeparator         = Color(0xFFD1D1D6)
+val LightFill              = Color(0xFFE9E9EF)
 
-// Neutral
-val Slate900 = Color(0xFF0F172A)
-val Slate800 = Color(0xFF1E293B)
-val Slate700 = Color(0xFF334155)
-val Slate500 = Color(0xFF64748B)
-val Slate400 = Color(0xFF94A3B8)
-val Slate200 = Color(0xFFE2E8F0)
-val Slate100 = Color(0xFFF1F5F9)
-val Slate50  = Color(0xFFF8FAFC)
+// ニュートラル（ダーク）
+val DarkGroupedBackground = Color(0xFF000000)
+val DarkLabel             = Color(0xFFF5F5F7)
+val DarkSecondaryLabel    = Color(0xFF98989F)
+val DarkTertiaryLabel     = Color(0xFF5C5C62)
+val DarkSeparator         = Color(0xFF38383A)
+val DarkElevated          = Color(0xFF1C1C1E)
+val DarkElevated2         = Color(0xFF2C2C2E)

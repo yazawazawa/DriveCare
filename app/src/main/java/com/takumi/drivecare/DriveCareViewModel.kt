@@ -67,9 +67,11 @@ class DriveCareViewModel(
         val records = repository.getAllFuelRecords()
         val maintenanceRecords = repository.getAllMaintenanceRecords()
 
+        // 保存済みのIDが既に存在しない車両（削除済み・バックアップ復元後など）を指していたら最新の車両にフォールバック
+        val validIds = vehicles.map { it.id }.toSet()
         val selectedVehicleId =
-            _uiState.value.selectedVehicleId
-                ?: _uiState.value.lastUsedVehicleId
+            _uiState.value.selectedVehicleId?.takeIf { it in validIds }
+                ?: _uiState.value.lastUsedVehicleId?.takeIf { it in validIds }
                 ?: vehicles.lastOrNull()?.id
 
         _uiState.value = _uiState.value.copy(

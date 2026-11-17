@@ -1,6 +1,10 @@
 package com.takumi.drivecare
 
 import android.content.Context
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -38,7 +42,9 @@ data class MaintenanceItemDef(
     val isFixed: Boolean = false,
     val fieldKey: String? = null
 ) {
-    val triggerEnum: IntervalTrigger get() = IntervalTrigger.valueOf(trigger)
+    // 不正な値が保存されていてもクラッシュしないようにフォールバックする
+    val triggerEnum: IntervalTrigger
+        get() = runCatching { IntervalTrigger.valueOf(trigger) }.getOrDefault(IntervalTrigger.KM)
 }
 
 /** デフォルト固定項目 */
@@ -58,20 +64,35 @@ object MaintenanceItemDefRepository {
     private val json = Json { ignoreUnknownKeys = true }
     private const val PREFS_NAME = "maintenance_item_defs"
 
+    /** 項目定義が変更されるたびに増えるカウンタ。Compose 側はこれを読んで再取得する。 */
+    val version = mutableIntStateOf(0)
+
     fun getItemDefs(context: Context, vehicleId: Int): List<MaintenanceItemDef> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val raw = prefs.getString("vehicle_$vehicleId", null)
         if (raw == null) {
             // 初回アクセス時は固定項目をシードしておく（未シードだとレポート/履歴の項目集計から漏れる）
-            saveItemDefs(context, vehicleId, MaintenanceItemDefaults.items)
+            persist(context, vehicleId, MaintenanceItemDefaults.items)
             return MaintenanceItemDefaults.items
         }
         return runCatching { json.decodeFromString<List<MaintenanceItemDef>>(raw) }.getOrDefault(MaintenanceItemDefaults.items)
     }
 
     fun saveItemDefs(context: Context, vehicleId: Int, defs: List<MaintenanceItemDef>) {
+        persist(context, vehicleId, defs)
+        version.intValue++
+    }
+
+    private fun persist(context: Context, vehicleId: Int, defs: List<MaintenanceItemDef>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString("vehicle_$vehicleId", json.encodeToString(defs)).apply()
+    }
+
+    /** 車両削除時に、その車両の項目定義も削除する。 */
+    fun removeVehicle(context: Context, vehicleId: Int) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().remove("vehicle_$vehicleId").apply()
+        version.intValue++
     }
 
     fun addCustomItem(
@@ -121,3 +142,47 @@ fun MaintenanceRecord.doneForFieldKey(key: String?): Boolean = when (key) {
 fun MaintenanceRecord.checkedCustomIds(): Set<String> =
     if (customItemsDone.isBlank()) emptySet()
     else customItemsDone.split(",").filter { it.isNotBlank() }.toSet()
+
+/** 選択中車両の整備項目定義。定義が更新されると自動で再取得される。 */
+@Composable
+fun rememberItemDefs(vehicleId: Int?): List<MaintenanceItemDef> {
+    val context = LocalContext.current
+    val version = MaintenanceItemDefRepository.version.intValue
+    return remember(vehicleId, version) {
+        if (vehicleId != null) MaintenanceItemDefRepository.getItemDefs(context, vehicleId) else emptyList()
+    }
+}
+
+/** 固定項目の fieldKey と表示名。 */
+val FixedMaintenanceLabels: Map<String, String> = linkedMapOf(
+    "carWash" to "洗車",
+    "engineOil" to "エンジンオイル交換",
+    "oilElement" to "エレメント交換",
+    "wiper" to "ワイパー交換",
+    "tire" to "タイヤ交換",
+    "airCleanerCleaning" to "エアクリーナ清掃",
+    "airCleanerReplacement" to "エアクリーナ交換"
+)
+
+/** この記録で実施済みの項目キー（固定項目は fieldKey、カスタム項目は ID）。 */
+fun MaintenanceRecord.doneKeys(): Set<String> =
+    FixedMaintenanceLabels.keys.filter { doneForFieldKey(it) }.toSet() + checkedCustomIds()
+
+/** 実施済み項目の表示名。カスタム項目は定義から名前を引き、定義が削除済みなら注記する。 */
+fun MaintenanceRecord.doneItemLabels(itemDefs: List<MaintenanceItemDef>): List<String> {
+    val defMap = itemDefs.associateBy { it.id }
+    return FixedMaintenanceLabels.filterKeys { doneForFieldKey(it) }.values.toList() +
+        checkedCustomIds().map { id -> defMap[id]?.label ?: "削除された項目" }
+}
+
+/** 実施済みキーのセットを記録に反映する。 */
+fun MaintenanceRecord.withDoneKeys(keys: Set<String>): MaintenanceRecord = copy(
+    carWashDone = "carWash" in keys,
+    engineOilDone = "engineOil" in keys,
+    oilElementDone = "oilElement" in keys,
+    wiperDone = "wiper" in keys,
+    tireDone = "tire" in keys,
+    airCleanerCleaningDone = "airCleanerCleaning" in keys,
+    airCleanerReplacementDone = "airCleanerReplacement" in keys,
+    customItemsDone = keys.filter { it !in FixedMaintenanceLabels.keys }.joinToString(",")
+)
