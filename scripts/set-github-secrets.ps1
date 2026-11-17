@@ -1,14 +1,17 @@
-# リリース用 APK のビルド（GitHub Actions）に必要な 2 つの秘密情報を、GitHub の Secrets に登録する（Windows / PowerShell 用）。
+# Registers the two secrets needed by the "Release APK" GitHub Actions workflow (Windows / PowerShell).
 #
-#   ANDROID_DEBUG_KEYSTORE_BASE64 : デバッグ用キーストア（%USERPROFILE%\.android\debug.keystore）
-#   GOOGLE_SERVICES_JSON_BASE64   : Firebase の設定（app\google-services.json）
+#   ANDROID_DEBUG_KEYSTORE_BASE64 : debug keystore  (%USERPROFILE%\.android\debug.keystore)
+#   GOOGLE_SERVICES_JSON_BASE64   : Firebase config (app\google-services.json)
 #
-# 使い方（リポジトリのフォルダで実行）:
-#   1. GitHub CLI を入れてログインしておく:  winget install GitHub.cli   →   gh auth login
+# Usage (run in the repository folder):
+#   1. Install GitHub CLI and log in:   winget install GitHub.cli   then   gh auth login
 #   2. .\scripts\set-github-secrets.ps1
 #
-# 実行できない場合は、先に次を実行してください（このウィンドウだけ有効）:
+# If scripts are blocked, run this first (valid for this window only):
 #   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+#
+# NOTE: This file is intentionally ASCII-only. Windows PowerShell 5.1 reads BOM-less UTF-8 as the
+# system code page and garbles non-ASCII text, which breaks parsing.
 param(
     [string]$Repo = "yazawazawa/DriveCare",
     [string]$Keystore = "$env:USERPROFILE\.android\debug.keystore",
@@ -17,28 +20,30 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    throw "GitHub CLI (gh) が見つかりません。'winget install GitHub.cli' で入れて、PowerShell を開き直してください。"
+    throw "GitHub CLI (gh) not found. Run 'winget install GitHub.cli', then reopen PowerShell."
 }
 gh auth status *> $null
-if ($LASTEXITCODE -ne 0) { throw "gh にログインしていません。'gh auth login' を実行してください。" }
-if (-not (Test-Path $Keystore)) { throw "キーストアが見つかりません: $Keystore" }
-if (-not (Test-Path $Services)) { throw "google-services.json が見つかりません: $Services（リポジトリのフォルダで実行していますか？）" }
+if ($LASTEXITCODE -ne 0) { throw "Not logged in to gh. Run 'gh auth login' first." }
+if (-not (Test-Path $Keystore)) { throw "Keystore not found: $Keystore" }
+if (-not (Test-Path $Services)) { throw "google-services.json not found: $Services (are you in the repository folder?)" }
 
-# Firebase に登録した SHA-1 と一致するか、目で確認できるように表示する（keytool がある場合のみ）
+# Show the keystore SHA-1 so you can compare it with the one registered in Firebase (needs keytool).
 if (Get-Command keytool -ErrorAction SilentlyContinue) {
-    Write-Host "キーストアの SHA-1（Firebase の「SHA 証明書フィンガープリント」と同じか確認してください）:"
+    Write-Host "Keystore SHA-1 (compare with the fingerprint registered in Firebase):"
     keytool -list -v -alias androiddebugkey -keystore $Keystore -storepass android -keypass android 2>$null |
         Select-String "SHA1:" | ForEach-Object { $_.Line.Trim() }
+} else {
+    Write-Host "(keytool not found on PATH: skipping the SHA-1 display)"
 }
 
 function ConvertTo-Base64([string]$Path) {
     [Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path $Path)))
 }
 
-Write-Host "登録先: $Repo"
-# 標準入力ではなく --body で渡す（改行コードが混ざらないようにするため）
+Write-Host "Target repository: $Repo"
+# Pass the value with --body instead of stdin so that no stray CRLF is appended.
 gh secret set ANDROID_DEBUG_KEYSTORE_BASE64 --repo $Repo --body (ConvertTo-Base64 $Keystore)
-if ($LASTEXITCODE -ne 0) { throw "ANDROID_DEBUG_KEYSTORE_BASE64 の登録に失敗しました" }
+if ($LASTEXITCODE -ne 0) { throw "Failed to set ANDROID_DEBUG_KEYSTORE_BASE64" }
 gh secret set GOOGLE_SERVICES_JSON_BASE64 --repo $Repo --body (ConvertTo-Base64 $Services)
-if ($LASTEXITCODE -ne 0) { throw "GOOGLE_SERVICES_JSON_BASE64 の登録に失敗しました" }
-Write-Host "完了しました。GitHub の Actions で「Release APK」をもう一度実行してください。"
+if ($LASTEXITCODE -ne 0) { throw "Failed to set GOOGLE_SERVICES_JSON_BASE64" }
+Write-Host "Done. Now run the 'Release APK' workflow again in GitHub Actions."
