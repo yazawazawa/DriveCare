@@ -1,7 +1,14 @@
 # リリース（APK の配布）
 
-`v` で始まるタグを push すると、GitHub Actions が APK をビルドしてリリースに添付します
-（[`.github/workflows/release-apk.yml`](../.github/workflows/release-apk.yml)）。
+GitHub Actions が APK をビルドして、リリースに添付します
+（[`.github/workflows/release-apk.yml`](../.github/workflows/release-apk.yml)）。次のどちらかで始めます。
+
+**方法1: GitHub の画面から（かんたん）**
+1. リポジトリの「Actions」タブ > 左の「Release APK」を開く。
+2. 「Run workflow」を押し、ブランチは `main` のまま、タグ名に `v0.0.1a` と入力して実行する。
+   （タグが無ければ、`main` の最新コミットに自動で作られます）
+
+**方法2: タグを push する**
 
 ```bash
 git tag v0.0.1a
