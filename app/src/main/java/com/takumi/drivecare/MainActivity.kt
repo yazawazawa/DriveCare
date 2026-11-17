@@ -95,7 +95,8 @@ class MainActivity : ComponentActivity() {
         DriveCareViewModelFactory(
             DriveCareRepository(
                 DriveCareDatabase.getDatabase(applicationContext).driveCareDao()
-            )
+            ),
+            applicationContext
         )
     }
 
@@ -123,9 +124,10 @@ enum class RecordMode(val label: String) {
     MAINTENANCE("整備")
 }
 
-enum class SettingsScreen {
-    TOP,
-    VEHICLE_MANAGEMENT
+enum class SettingsScreen(val title: String) {
+    TOP("設定"),
+    VEHICLE_MANAGEMENT("車両"),
+    CLOUD("クラウド共有")
 }
 
 enum class ReportGraphType(val label: String) {
@@ -210,6 +212,7 @@ fun ScreenColumn(
 @Composable
 fun DriveCareApp(viewModel: DriveCareViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val cloudState by viewModel.cloud.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
@@ -271,6 +274,11 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
     val pickBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? -> if (uri != null) restoreUri = uri }
+
+    // クラウド共有からの通知（参加・同期エラーなど）をトーストで表示する
+    LaunchedEffect(Unit) {
+        viewModel.cloud.events.collect { showMessage(it.text, it.isError) }
+    }
 
     val selectedVehicleRecords = uiState.fuelRecords
         .filter { it.vehicleId == uiState.selectedVehicleId }
@@ -519,6 +527,8 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                             vehicleCount = uiState.vehicles.size,
                             appVersion = BuildConfig.VERSION_NAME,
                             onOpenVehicleManagement = { settingsScreen = SettingsScreen.VEHICLE_MANAGEMENT },
+                            cloudSummary = cloudState.summary(),
+                            onOpenCloud = { settingsScreen = SettingsScreen.CLOUD },
                             onCreateBackup = { password, share ->
                                 viewModel.createBackup(context, password, share) { result ->
                                     showMessage(
@@ -530,7 +540,24 @@ fun DriveCareApp(viewModel: DriveCareViewModel) {
                                     )
                                 }
                             },
-                            onPickRestoreFile = { pickBackupLauncher.launch("*/*") }
+                            onPickRestoreFile = {
+                                if (cloudState.groupId != null) {
+                                    showMessage("共有中は復元できません。先にクラウド共有を終了してください", isError = true)
+                                } else {
+                                    pickBackupLauncher.launch("*/*")
+                                }
+                            }
+                        )
+
+                        SettingsScreen.CLOUD -> CloudScreen(
+                            modifier = screenModifier,
+                            state = cloudState,
+                            onSignIn = { context.findActivity()?.let { viewModel.cloud.signIn(it) } },
+                            onSignOut = { context.findActivity()?.let { viewModel.cloud.signOut(it) } },
+                            onCreateGroup = { viewModel.cloud.createGroup(it) },
+                            onJoinGroup = { code, include -> viewModel.cloud.joinGroup(code, include) },
+                            onCreateInvite = { viewModel.cloud.createInvite() },
+                            onLeaveGroup = { viewModel.cloud.leaveGroup(it) }
                         )
 
                         SettingsScreen.VEHICLE_MANAGEMENT -> VehicleManagementScreen(
@@ -621,7 +648,7 @@ private fun AppHeader(
             .padding(horizontal = 20.dp)
             .padding(top = 10.dp, bottom = 6.dp)
     ) {
-        if (selectedTab == BottomTab.SETTINGS && settingsScreen == SettingsScreen.VEHICLE_MANAGEMENT) {
+        if (selectedTab == BottomTab.SETTINGS && settingsScreen != SettingsScreen.TOP) {
             Row(
                 modifier = Modifier
                     .pressable(onClick = onBackFromSubScreen)
@@ -636,7 +663,7 @@ private fun AppHeader(
                 )
                 Text("設定", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
             }
-            LargeTitle(title = "車両")
+            LargeTitle(title = settingsScreen.title)
             return@Column
         }
 

@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// DriveCare クラウド共有用のセキュリティルール。
+// Firebase コンソール > Firestore Database > ルール に貼り付けて公開する（docs/CLOUD_SETUP.md 参照）。
+//
+//   users/{uid}                      自分がどのグループに入っているか（本人のみ）
+//   groups/{gid}                     共有グループ本体
+//   groups/{gid}/members/{uid}       メンバー（この文書があれば、そのグループのメンバー）
+//   groups/{gid}/vehicles|fuelRecords|maintenanceRecords/{id}   共有データ（メンバーのみ読み書き可）
+//   invites/{code}                   招待コード（コードを知っている人だけが1件取得できる。一覧は不可）
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(gid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/groups/$(gid)/members/$(request.auth.uid));
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /groups/{gid} {
+      // 作成者は自分を ownerUid にする。既存のグループは上書きできない（create のみ）
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if isMember(gid);
+      allow update, delete: if false;
+
+      match /members/{uid} {
+        allow read: if isMember(gid);
+
+        // 参加できるのは本人のみ。グループ作成者、または有効な招待コードを持つ人
+        allow create: if signedIn() && uid == request.auth.uid && (
+          get(/databases/$(database)/documents/groups/$(gid)).data.ownerUid == request.auth.uid
+          || (
+            request.resource.data.code is string
+            && exists(/databases/$(database)/documents/invites/$(request.resource.data.code))
+            && get(/databases/$(database)/documents/invites/$(request.resource.data.code)).data.groupId == gid
+            && get(/databases/$(database)/documents/invites/$(request.resource.data.code)).data.expiresAt > request.time
+          )
+        );
+
+        // 退出は本人のみ
+        allow delete: if signedIn() && uid == request.auth.uid;
+        allow update: if false;
+      }
+
+      match /vehicles/{id} {
+        allow read, write: if isMember(gid);
+      }
+      match /fuelRecords/{id} {
+        allow read, write: if isMember(gid);
+      }
+      match /maintenanceRecords/{id} {
+        allow read, write: if isMember(gid);
+      }
+    }
+
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.groupId is string
+        && request.resource.data.expiresAt is timestamp
+        && isMember(request.resource.data.groupId);
+      allow delete: if signedIn() && isMember(resource.data.groupId);
+      allow update: if false;
+    }
+  }
+}

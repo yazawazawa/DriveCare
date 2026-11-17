@@ -78,10 +78,34 @@ object MaintenanceItemDefRepository {
         return runCatching { json.decodeFromString<List<MaintenanceItemDef>>(raw) }.getOrDefault(MaintenanceItemDefaults.items)
     }
 
+    /** クラウド共有中に、ユーザー操作による定義の変更をクラウドへ送るためのフック。 */
+    @Volatile
+    var onUserSaved: ((vehicleId: Int, defs: List<MaintenanceItemDef>) -> Unit)? = null
+
     fun saveItemDefs(context: Context, vehicleId: Int, defs: List<MaintenanceItemDef>) {
         persist(context, vehicleId, defs)
         version.intValue++
+        onUserSaved?.invoke(vehicleId, defs)
     }
+
+    /** クラウドへは送らずに端末内へだけ保存する（クラウドとの受け渡し用）。 */
+    fun storeLocally(context: Context, vehicleId: Int, defs: List<MaintenanceItemDef>) {
+        persist(context, vehicleId, defs)
+        version.intValue++
+    }
+
+    /** クラウドから届いた定義（JSON）を反映する。内容が変わらなければ何もしない。 */
+    fun applyRemoteJson(context: Context, vehicleId: Int, remoteJson: String) {
+        val remote = runCatching { json.decodeFromString<List<MaintenanceItemDef>>(remoteJson) }.getOrNull() ?: return
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val currentRaw = prefs.getString("vehicle_$vehicleId", null)
+        val current = currentRaw?.let { runCatching { json.decodeFromString<List<MaintenanceItemDef>>(it) }.getOrNull() }
+        if (current == remote) return
+        persist(context, vehicleId, remote)
+        version.intValue++
+    }
+
+    fun toJson(defs: List<MaintenanceItemDef>): String = json.encodeToString(defs)
 
     private fun persist(context: Context, vehicleId: Int, defs: List<MaintenanceItemDef>) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

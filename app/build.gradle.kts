@@ -6,6 +6,12 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// クラウド共有（Firebase）。app/google-services.json が無くてもビルドでき、その場合は
+// アプリ内で「クラウド共有は未設定」と表示される。設定手順は docs/CLOUD_SETUP.md を参照。
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.takumi.drivecare"
     compileSdk = 36
@@ -74,6 +80,15 @@ dependencies {
     // Lifecycle / ViewModel
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.0")
+
+    // クラウド共有: Firebase（Authentication / Firestore）と Google ログイン
+    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
