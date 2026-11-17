@@ -31,6 +31,22 @@ android {
         }
     }
 
+    signingConfigs {
+        // 環境変数 DRIVECARE_DEBUG_KEYSTORE でキーストアが指定されていれば、デバッグビルドの署名にそれを使う。
+        // （GitHub Actions では、ホームフォルダの暗黙の場所に頼らず、確実に指定したキーで署名するため）
+        // 指定が無ければ、これまでどおり標準のデバッグキーが使われる。
+        getByName("debug") {
+            System.getenv("DRIVECARE_DEBUG_KEYSTORE")
+                ?.takeIf { it.isNotBlank() && file(it).exists() }
+                ?.let { path ->
+                    storeFile = file(path)
+                    storePassword = "android"
+                    keyAlias = "androiddebugkey"
+                    keyPassword = "android"
+                }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
