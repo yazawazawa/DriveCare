@@ -44,13 +44,24 @@ Spark プラン（無料）の無料枠は、1日あたり読み取り5万件・
 たいてい、**Firebase に登録した SHA-1 と、インストールしたアプリの署名が一致していません**
 （デバッグビルドは、ビルドした PC や CI の署名キーによって SHA-1 が変わります）。
 
-1. **いま入っているアプリの SHA-1 を調べる**（APK ファイルを使います。`keytool` は Android Studio 同梱のものでも構いません）。
+1. **いま入っているアプリの SHA-1 を調べる**。Android SDK の `apksigner` を使います
+   （`keytool -printcert -jarfile` は古い方式の署名しか読めず、このアプリでは「署名付きJARファイルではありません」になります）。
 
 ```powershell
-& "C:\Program Files\Android\Android Studio\jbr\bin\keytool.exe" -printcert -jarfile DriveCare-0.0.1c.apk
+# apksigner の場所を探す
+Get-ChildItem -Path "$env:LOCALAPPDATA\Android","C:\Program Files\Android" -Filter apksigner.bat -Recurse -ErrorAction SilentlyContinue | Select-Object -First 3 -ExpandProperty FullName
+
+# 見つかったパスで APK の署名を表示する
+& "<上で見つかったパス>" verify --print-certs DriveCare-0.0.1d.apk
 ```
 
-   出力の `SHA1:` の行が、そのアプリの署名です。
+   出力の `Signer #1 certificate SHA-1 digest:` の行が、そのアプリの署名です。
+
+   PC のデバッグキーの SHA-1 は、こちらで確認できます（`keytool` で読めます）。
+
+```powershell
+& "<keytool.exe のパス>" -list -v -alias androiddebugkey -keystore "$env:USERPROFILE\.android\debug.keystore" -storepass android -keypass android | Select-String "SHA1:"
+```
 
 2. Firebase コンソール > プロジェクトの設定 > 全般 > Android アプリ > 「SHA 証明書フィンガープリント」に、**同じ値が登録されているか**確認する。無ければ追加する。
 3. 追加したら `google-services.json` をダウンロードし直し、`app/` の中身と GitHub の Secrets（`GOOGLE_SERVICES_JSON_BASE64`）を更新する。
