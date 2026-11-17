@@ -1,6 +1,17 @@
 package com.takumi.drivecare.ui.glass
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
@@ -202,6 +213,7 @@ fun GlassCard(
 ) {
     Column(
         modifier = modifier
+            .staggerIn()
             .then(if (onClick != null) Modifier.pressable(onClick = onClick) else Modifier)
             .glass(shape, tint = tint)
             .padding(contentPadding),
@@ -233,13 +245,23 @@ fun LargeTitle(
                     fontWeight = FontWeight.SemiBold
                 )
             }
-            Text(
-                title,
-                style = MaterialTheme.typography.headlineLarge,
-                color = glass.label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            // 画面が切り替わると、タイトルが下からふわっと入れ替わる
+            AnimatedContent(
+                targetState = title,
+                transitionSpec = {
+                    (fadeIn(tween(240, delayMillis = 80)) + slideInVertically(tween(280, easing = FastOutSlowInEasing)) { it / 3 }) togetherWith
+                        (fadeOut(tween(120)) + slideOutVertically(tween(160)) { -it / 4 })
+                },
+                label = "title"
+            ) { text ->
+                Text(
+                    text,
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = glass.label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
         trailing()
     }
@@ -259,8 +281,10 @@ fun SegmentedControl(
     selectedTextColor: Color? = null
 ) {
     val g = glass
+    val tick = rememberTick()
     BoxWithConstraints(
         modifier = modifier
+            .staggerIn()
             .height(height)
             .clip(CircleShape)
             .background(g.track)
@@ -297,7 +321,10 @@ fun SegmentedControl(
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) { onSelect(i) },
+                        ) {
+                            if (i != selectedIndex) tick()
+                            onSelect(i)
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -326,6 +353,7 @@ fun GlassTabBar(
     accent: Color = MaterialTheme.colorScheme.primary
 ) {
     val g = glass
+    val tick = rememberTick()
     BoxWithConstraints(
         modifier = modifier
             .height(64.dp)
@@ -358,11 +386,23 @@ fun GlassTabBar(
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
-                        ) { onSelect(i) },
+                        ) {
+                            if (i != selectedIndex) tick()
+                            onSelect(i)
+                        },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Icon(tab.icon, contentDescription = tab.label, tint = color, modifier = Modifier.size(24.dp))
+                    // 選ばれたアイコンが、ぽよんと弾む
+                    val iconScale by animateFloatAsState(
+                        if (selected) 1.14f else 1f,
+                        spring(dampingRatio = 0.35f, stiffness = 500f),
+                        label = "tabIcon"
+                    )
+                    Icon(
+                        tab.icon, contentDescription = tab.label, tint = color,
+                        modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale }
+                    )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         tab.label,
@@ -387,7 +427,7 @@ fun GlassSection(
     footer: String? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth().staggerIn()) {
         if (header != null) {
             SectionHeader(header)
         }
@@ -595,9 +635,10 @@ fun GlassInputRow(
 @Composable
 fun GlassSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
     val g = glass
+    val tick = rememberTick()
     Switch(
         checked = checked,
-        onCheckedChange = onCheckedChange,
+        onCheckedChange = onCheckedChange?.let { change -> { value: Boolean -> tick(); change(value) } },
         modifier = modifier,
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White,
@@ -625,11 +666,13 @@ fun PrimaryGlassButton(
     enabled: Boolean = true
 ) {
     val shape = RoundedCornerShape(20.dp)
+    val confirm = rememberConfirmHaptic()
     Row(
         modifier = modifier
+            .staggerIn()
             .fillMaxWidth()
             .height(56.dp)
-            .pressable(enabled = enabled, onClick = onClick)
+            .pressable(enabled = enabled, onClick = { confirm(); onClick() })
             .shadow(if (enabled) 14.dp else 0.dp, shape, ambientColor = color.copy(alpha = 0.5f), spotColor = color.copy(alpha = 0.5f))
             .clip(shape)
             .background(
@@ -802,8 +845,18 @@ fun EmptyState(
     onAction: (() -> Unit)? = null
 ) {
     val g = glass
+    // アイコンは、ぽんと現れたあと、ゆっくり上下にただよう
+    val pop = remember { Animatable(0.5f) }
+    LaunchedEffect(Unit) { pop.animateTo(1f, spring(dampingRatio = 0.45f, stiffness = Spring.StiffnessLow)) }
+    val float by rememberInfiniteTransition(label = "float").animateFloat(
+        initialValue = -4f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "floatY"
+    )
     Column(
         modifier = modifier
+            .staggerIn()
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -811,6 +864,11 @@ fun EmptyState(
     ) {
         Box(
             modifier = Modifier
+                .graphicsLayer {
+                    scaleX = pop.value
+                    scaleY = pop.value
+                    translationY = float.dp.toPx()
+                }
                 .size(84.dp)
                 .glass(CircleShape, elevation = 12.dp),
             contentAlignment = Alignment.Center
